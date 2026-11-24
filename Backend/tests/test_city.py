@@ -157,6 +157,21 @@ def test_car_waits_at_a_light_that_stays_red_and_the_simulation_stops(tmp_path):
     assert model.spawned == 2
 
 
+def test_blocked_car_with_no_detour_retries_a_star_once_per_patience_window(tmp_path):
+    # Car 1 waits at a red light forever; car 2 queues behind it on a one-lane road.
+    model = tiny_city(tmp_path, [">>s>D"], short_green=1, long_green=1000)
+    for _ in range(10):
+        model.step()
+    calls = []
+    original_route = model.route
+    model.route = lambda *args, **kwargs: calls.append(args) or original_route(*args, **kwargs)
+    while model.running:
+        model.step()
+    # Car 2 is blocked on steps 11-20: 10 steps, one attempt every 3 -> 3 attempts.
+    assert model.steps == 20
+    assert len(calls) == 3
+
+
 def test_same_car_drives_through_when_the_light_is_green(tmp_path):
     model = tiny_city(tmp_path, [">>s>D"], short_green=1000, long_green=1)
     for _ in range(25):
