@@ -17,6 +17,7 @@ from .city_graph import (
     infer_light_directions,
     shortest_route,
 )
+from .vehicle import Event, Vehicle, VehicleFrame
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +72,13 @@ class CityModel(Model):
         )
         self.traffic_lights: list[Traffic_Light] = []
         self.destinations: list[Position] = []
+        self.helipads: list[Position] = []  # ambulance homes, filled once they exist
         self.spawned = 0
         self.arrived = 0
         self.arrived_trip_steps = 0
         self.arrived_wait_steps = 0
         self.stop_reason: str | None = None
+        self.events: list[Event] = []  # what happened during the latest step
 
         road_dirs, light_cells = self._place_map(lines, symbols)
         light_dirs = infer_light_directions(road_dirs, list(light_cells))
@@ -165,7 +168,14 @@ class CityModel(Model):
             return "no spawn corner can reach a destination"
         return "every spawn corner is occupied"
 
-    def record_arrival(self, trip_steps: int, wait_steps: int) -> None:
+    def emit(self, event_type: str, agent_id: int) -> None:
+        self.events.append({"type": event_type, "id": str(agent_id)})
+
+    def vehicles(self) -> list[VehicleFrame]:
+        return [agent.frame() for agent in self.agents if isinstance(agent, Vehicle)]
+
+    def record_arrival(self, car: Car, trip_steps: int, wait_steps: int) -> None:
+        self.emit("arrived", car.unique_id)
         self.arrived += 1
         self.arrived_trip_steps += trip_steps
         self.arrived_wait_steps += wait_steps
@@ -192,6 +202,7 @@ class CityModel(Model):
     def step(self) -> None:
         """Lights change first so cars see this step's colors, then cars move, then
         cars spawn. Mesa has already incremented self.steps when this runs."""
+        self.events = []
         for light in self.traffic_lights:
             light.step()
         if Car in self.agents_by_type:

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from mesa.discrete_space import Cell, CellAgent, FixedAgent
 
 from .city_graph import Direction, Position, Vector
+from .vehicle import VehicleFrame
 
 if TYPE_CHECKING:
     from .model import CityModel
@@ -23,6 +24,8 @@ class Car(CellAgent):
     otherwise drive.
     """
 
+    kind = "car"
+
     def __init__(
         self, model: CityModel, cell: Cell, destination: Position, heading: Vector
     ) -> None:
@@ -34,6 +37,7 @@ class Car(CellAgent):
         self.age = 0
         self.wait_steps = 0
         self.blocked_for = 0
+        self.state = "driving"
         if not self.route:
             logger.warning(
                 "car %s at %s has no route to %s",
@@ -80,8 +84,21 @@ class Car(CellAgent):
             self.route = detour
         self.blocked_for = 0
 
+    def frame(self) -> VehicleFrame:
+        x, y = self.cell.coordinate
+        return {
+            "id": str(self.unique_id),
+            "kind": self.kind,
+            "x": x,
+            "y": 0,
+            "z": y,
+            "heading": {"x": self.heading[0], "z": self.heading[1]},
+            "state": self.state,
+        }
+
     def _wait(self) -> None:
         self.wait_steps += 1
+        self.state = "waiting"
 
     def _drive(self) -> None:
         nxt, *self.route = self.route
@@ -89,8 +106,9 @@ class Car(CellAgent):
         self.heading = (nxt[0] - here[0], nxt[1] - here[1])
         self.cell = self.model.grid[nxt]
         self.blocked_for = 0
+        self.state = "driving"
         if nxt == self.destination:
-            self.model.record_arrival(self.age, self.wait_steps)
+            self.model.record_arrival(self, self.age, self.wait_steps)
             self.remove()
 
 
