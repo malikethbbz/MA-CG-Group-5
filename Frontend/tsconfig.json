@@ -6,6 +6,10 @@
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
+    /* twgl-base.js points "types" at a file it does not ship; use the one it does */
+    "paths": {
+      "twgl-base.js": ["./node_modules/twgl-base.js/dist/5.x/twgl.d.ts"]
+    },
 
     /* GEF */
     "alwaysStrict": true,
