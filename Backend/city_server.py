@@ -17,6 +17,7 @@ app = Flask("Traffic example")
 CORS(app, origins=[r"http://localhost(:\d+)?", r"http://127\.0\.0\.1(:\d+)?"])
 
 city_model: CityModel | None = None
+MAX_SEED = 2**32
 AVAILABLE_MAPS = {path.name for path in CITY_FILES.glob("*.txt")}
 
 
@@ -52,12 +53,14 @@ def init_model():
     map_name = params.get("map", DEFAULT_MAP)
     if map_name not in AVAILABLE_MAPS:
         return jsonify({"message": f"Unknown map. Options: {sorted(AVAILABLE_MAPS)}"}), 400
+    seed = params.get("seed", 42)
+    if not isinstance(seed, int) or isinstance(seed, bool) or not 0 <= seed < MAX_SEED:
+        return jsonify({"message": f"Seed must be an integer from 0 to {MAX_SEED - 1}."}), 400
     try:
-        seed = int(params.get("seed", 42))
         city_model = CityModel(map_name=map_name, seed=seed)
-    except (ValueError, TypeError):
-        logger.exception("bad /init parameters")
-        return jsonify({"message": "Invalid map or seed."}), 400
+    except ValueError:
+        logger.exception("map %s could not be loaded", map_name)
+        return jsonify({"message": f"Map {map_name} could not be loaded."}), 400
     return jsonify(
         {
             "message": "Model initiated.",
@@ -120,5 +123,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     host = os.environ.get("FLASK_HOST", "localhost")
     port = int(os.environ.get("FLASK_PORT", "8585"))
-    debug = os.environ.get("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
     app.run(host=host, port=port, debug=debug)

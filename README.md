@@ -87,7 +87,7 @@ then `S` lights for the next 15, so crossing streets are never green at the same
 
 | Endpoint | Method | Returns |
 |----------|--------|---------|
-| `/init` | POST | Creates the model. Body: `{"map": "2025_base.txt", "seed": 42}` (both optional) |
+| `/init` | GET, POST | Creates the model. POST body: `{"map": "2025_base.txt", "seed": 42}` (both optional) |
 | `/update` | GET | Advances one step while the simulation is running |
 | `/getAgents` | GET | Cars: `id`, `x`, `y`, `z`, `heading` |
 | `/getTrafficLights` | GET | Lights: position and `state` (`true` = green) |

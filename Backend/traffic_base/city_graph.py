@@ -71,6 +71,15 @@ def infer_light_directions(
     return {light: known[light] for light in lights}
 
 
+def _clears_corners(start: Position, move: Position, drivable: dict) -> bool:
+    """A diagonal move passes between two cells; both must be road, so cars never clip
+    a building corner."""
+    if 0 in move:
+        return True
+    x, y = start
+    return (x + move[0], y) in drivable and (x, y + move[1]) in drivable
+
+
 def build_street_graph(
     drivable: dict[Position, Position], destinations: set[Position]
 ) -> nx.DiGraph:
@@ -84,7 +93,11 @@ def build_street_graph(
             target = (x + move[0], y + move[1])
             if target in destinations and 0 in move:
                 graph.add_edge((x, y), target, weight=1.0)
-            elif target in drivable and is_legal_move(move, from_dir, drivable[target]):
+            elif (
+                target in drivable
+                and is_legal_move(move, from_dir, drivable[target])
+                and _clears_corners((x, y), move, drivable)
+            ):
                 graph.add_edge((x, y), target, weight=move_cost(move, from_dir))
     return graph
 

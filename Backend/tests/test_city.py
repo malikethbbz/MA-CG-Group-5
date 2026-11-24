@@ -102,6 +102,19 @@ def test_cars_only_move_with_the_street_direction(city_run):
     assert moves > 1000  # the run really exercised the movement rules
 
 
+def test_diagonal_moves_never_cut_a_building_corner(city_run):
+    """Checked on raw map cells, independent of the graph's own move rule."""
+    model, history = city_run
+    diagonals = 0
+    for before, after in zip(history, history[1:]):
+        for car_id, (x, y) in before.items():
+            nx_, ny = after.get(car_id, (x, y))
+            if nx_ != x and ny != y:
+                assert (nx_, y) in model.drivable and (x, ny) in model.drivable
+                diagonals += 1
+    assert diagonals > 100
+
+
 def test_cars_never_enter_a_red_light(city_run):
     model, history = city_run
     # Replay light states: state at step t is the same function the lights use.

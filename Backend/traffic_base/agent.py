@@ -59,7 +59,7 @@ class Car(CellAgent):
         detour = self.model.route(self.cell.coordinate, self.destination, avoid={blocked})
         if detour:
             self.route = detour
-            self.blocked_for = 0
+        self.blocked_for = 0  # with no detour, try again after another PATIENCE steps
 
     def _wait(self):
         self.wait_steps += 1

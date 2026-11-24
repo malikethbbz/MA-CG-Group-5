@@ -23,6 +23,19 @@ def test_init_rejects_a_map_that_is_not_in_city_files(client):
     assert city_server.city_model is None
 
 
+@pytest.mark.parametrize("seed", [-1, 2**32, "7", 1.5, True])
+def test_init_rejects_seeds_that_are_not_small_integers(client, seed):
+    response = client.post("/init", json={"seed": seed})
+    assert response.status_code == 400
+    assert city_server.city_model is None
+
+
+def test_init_names_the_map_when_it_cannot_be_loaded(client):
+    response = client.post("/init", json={"map": "2024_base.txt"})
+    assert response.status_code == 400
+    assert "2024_base.txt" in response.get_json()["message"]
+
+
 def test_init_then_step_reports_cars_with_headings(client):
     init = client.post("/init", json={"seed": 1})
     assert init.get_json()["width"] == 36
