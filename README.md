@@ -57,6 +57,7 @@ Tests:
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest
+ruff check . && ruff format --check .
 ```
 
 ### Frontend
@@ -94,9 +95,10 @@ then `S` lights for the next 15, so crossing streets are never green at the same
 | `/getObstacles` | GET | Building positions |
 | `/getRoads` | GET | Road positions and `direction` |
 | `/getDestinations` | GET | Destination positions |
-| `/getStatus` | GET | Step, running flag, spawned / arrived / active cars, average trip and wait steps |
+| `/getStatus` | GET | Step, `running`, `stopReason`, spawned / arrived / active cars, average trip and wait steps (`null` until a car arrives) |
 
-Grid `(x, y)` maps to world `(x, z)`; `y` is the height in the 3D scene.
+Grid `(x, y)` maps to world `(x, z)`; `y` is the height in the 3D scene. Calls made
+before `/init` return `409`.
 
 ## Agent Design
 
@@ -104,7 +106,7 @@ Each car runs the first behavior whose condition holds, from highest to lowest p
 
 1. No route available: wait
 2. Red light on the next cell: stop
-3. Car on the next cell: wait, and after 3 steps plan a route around it
+3. Car on the next cell: wait; every `PATIENCE` blocked steps (3), look for a route around it
 4. Otherwise: drive one cell along the A* route
 
 Routes come from a directed street graph built from the map (`traffic_base/city_graph.py`).
@@ -115,7 +117,7 @@ which allows driving forward, changing lanes and crossing intersections.
 
 | Phase | Scope |
 |-------|-------|
-| 1 (done) | Cars: A* routing, traffic lights, collision avoidance, spawning and removal |
+| 1 | Cars: A* routing, traffic lights, collision avoidance, spawning and removal |
 | 2 | 3D city: buildings, roads, lights and cars driven by transformation matrices |
 | 3 | Flying ambulances: emergencies, landing spot reservation |
 | 4 | Rogue cars, ground police coordination, flying SWAT unit |

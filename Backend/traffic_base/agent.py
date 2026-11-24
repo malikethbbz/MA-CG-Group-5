@@ -1,19 +1,31 @@
-from mesa.discrete_space import CellAgent, FixedAgent
+from __future__ import annotations
 
-from .city_graph import Position
+import logging
+from typing import TYPE_CHECKING
 
-# Steps a car waits behind a stopped car before planning a route around it.
+from mesa.discrete_space import Cell, CellAgent, FixedAgent
+
+from .city_graph import Direction, Position, Vector
+
+if TYPE_CHECKING:
+    from .model import CityModel
+
+logger = logging.getLogger(__name__)
+
+# Blocked steps before a car looks for a way around the car in front. If there is
+# none, it looks again after another PATIENCE steps.
 PATIENCE = 3
 
 
 class Car(CellAgent):
-    """Drives an A* route to its destination, respecting lights and other cars.
-
-    Each step runs the first behavior whose condition holds (subsumption, highest first):
-    no route -> wait, red light ahead -> stop, car ahead -> wait or reroute, else drive.
+    """Drives an A* route to its destination. Each step runs the first rule that
+    applies: no route -> wait; red light ahead -> stop; car ahead -> wait or reroute;
+    otherwise drive.
     """
 
-    def __init__(self, model, cell, destination: Position, heading: Position):
+    def __init__(
+        self, model: CityModel, cell: Cell, destination: Position, heading: Vector
+    ) -> None:
         super().__init__(model)
         self.cell = cell
         self.destination = destination
@@ -22,8 +34,15 @@ class Car(CellAgent):
         self.age = 0
         self.wait_steps = 0
         self.blocked_for = 0
+        if not self.route:
+            logger.warning(
+                "car %s at %s has no route to %s",
+                self.unique_id,
+                cell.coordinate,
+                destination,
+            )
 
-    def step(self):
+    def step(self) -> None:
         self.age += 1
         if not self.route:
             self._wait()
@@ -35,88 +54,92 @@ class Car(CellAgent):
             self._drive()
 
     def _red_light_ahead(self, nxt: Position) -> bool:
-        """Stop before a red light; a car already on the light keeps going."""
+        """Stop before a red light; a car already on a light keeps going."""
         if self._light_at(self.cell.coordinate) is not None:
             return False
         light = self._light_at(nxt)
         return light is not None and not light.state
 
-    def _light_at(self, pos: Position):
-        return next(
-            (a for a in self.model.grid[pos].agents if isinstance(a, Traffic_Light)), None
-        )
+    def _light_at(self, pos: Position) -> Traffic_Light | None:
+        agents = self.model.grid[pos].agents
+        return next((a for a in agents if isinstance(a, Traffic_Light)), None)
 
     def _car_at(self, pos: Position) -> bool:
         return any(isinstance(a, Car) for a in self.model.grid[pos].agents)
 
-    def _handle_blocked(self):
+    def _handle_blocked(self) -> None:
         self.blocked_for += 1
         if self.blocked_for >= PATIENCE:
             self._reroute_around(self.route[0])
         self._wait()
 
-    def _reroute_around(self, blocked: Position):
-        detour = self.model.route(self.cell.coordinate, self.destination, avoid={blocked})
+    def _reroute_around(self, blocked: Position) -> None:
+        here = self.cell.coordinate
+        detour = self.model.route(here, self.destination, avoid={blocked})
         if detour:
             self.route = detour
-        self.blocked_for = 0  # with no detour, try again after another PATIENCE steps
+        self.blocked_for = 0
 
-    def _wait(self):
+    def _wait(self) -> None:
         self.wait_steps += 1
 
-    def _drive(self):
-        nxt = self.route.pop(0)
+    def _drive(self) -> None:
+        nxt, *self.route = self.route
         here = self.cell.coordinate
         self.heading = (nxt[0] - here[0], nxt[1] - here[1])
         self.cell = self.model.grid[nxt]
         self.blocked_for = 0
         if nxt == self.destination:
-            self.model.car_arrived(self)
+            self.model.record_arrival(self.age, self.wait_steps)
+            self.remove()
 
 
 class Traffic_Light(FixedAgent):
-    """Green during its slot of a cycle shared with the crossing street's lights.
+    """Green for `green_steps` of every `cycle` steps, starting at `offset`.
 
-    The map has two light groups: 's' and 'S'. Their durations from mapDictionary.json
-    (7 and 15) are their green times within one cycle, so the two groups are never
-    green together at the same intersection.
+    The model gives the 's' and 'S' groups back-to-back slots in one cycle, so the two
+    groups are never green at the same time.
     """
 
-    def __init__(self, model, cell, offset: int, green_steps: int, cycle: int):
+    def __init__(
+        self, model: CityModel, cell: Cell, offset: int, green_steps: int, cycle: int
+    ) -> None:
+        if not 0 < green_steps <= cycle:
+            raise ValueError(f"green_steps must be in 1..{cycle}, got {green_steps}")
         super().__init__(model)
         self.cell = cell
         self.offset = offset
         self.green_steps = green_steps
         self.cycle = cycle
-        self.state = self._is_green(0)
+        self.state = self._is_green(0)  # True is green; the API sends it as "state"
 
     def _is_green(self, t: int) -> bool:
         return (t - self.offset) % self.cycle < self.green_steps
 
-    def step(self):
+    def step(self) -> None:
         self.state = self._is_green(self.model.steps)
 
 
 class Destination(FixedAgent):
-    """Destination agent. Where each car should go."""
+    """A cell cars drive to. Cars are removed when they reach it."""
 
-    def __init__(self, model, cell):
+    def __init__(self, model: CityModel, cell: Cell) -> None:
         super().__init__(model)
         self.cell = cell
 
 
 class Obstacle(FixedAgent):
-    """Obstacle agent. Buildings and other cells cars cannot enter."""
+    """A building cell. Cars never enter it."""
 
-    def __init__(self, model, cell):
+    def __init__(self, model: CityModel, cell: Cell) -> None:
         super().__init__(model)
         self.cell = cell
 
 
 class Road(FixedAgent):
-    """Road agent. Determines where the cars can move, and in which direction."""
+    """A road cell and the direction traffic flows on it."""
 
-    def __init__(self, model, cell, direction="Left"):
+    def __init__(self, model: CityModel, cell: Cell, direction: Direction) -> None:
         super().__init__(model)
         self.cell = cell
         self.direction = direction

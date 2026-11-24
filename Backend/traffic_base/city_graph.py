@@ -1,122 +1,136 @@
-"""Directed street graph built from the city map, and A* routing over it.
-
-A move from cell u to a neighbor v is legal when it never goes against the street:
-the move must not point backwards relative to u's direction or v's direction, and v
-must not be the opposite lane. This allows driving forward, diagonal lane changes, and
-crossing straight through an intersection whose cells point across your path.
-"""
+"""Directed street graph built from the city map, and A* routing over it."""
 
 import math
+from collections.abc import Set
+from typing import Literal
 
 import networkx as nx
 
-Position = tuple[int, int]
+Position = tuple[
+    int, int
+]  # grid cell (x, y); y grows upward, row 0 of the file is the top
+Vector = tuple[int, int]  # a direction or a one-cell move (dx, dy)
+Direction = Literal["Up", "Down", "Left", "Right"]
+Drivable = dict[
+    Position, Vector
+]  # every road or light cell and the direction it points
 
-DIRECTION_VECTORS = {
+DIRECTION_VECTORS: dict[Direction, Vector] = {
     "Up": (0, 1),
     "Down": (0, -1),
     "Right": (1, 0),
     "Left": (-1, 0),
 }
 
-NEIGHBOR_OFFSETS = [
+NEIGHBOR_OFFSETS: list[Vector] = [
     (dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)
 ]
 
+STRAIGHT_COST = 1.0
+DIAGONAL_COST = math.sqrt(2)
+SIDEWAYS_COST = 1.5  # dearer than a diagonal, so cars only slide sideways to cross
 
-def _dot(a: Position, b: Position) -> int:
+
+def step(pos: Position, move: Vector) -> Position:
+    return (pos[0] + move[0], pos[1] + move[1])
+
+
+def _dot(a: Vector, b: Vector) -> int:
     return a[0] * b[0] + a[1] * b[1]
 
 
-def _is_opposite(a: Position, b: Position) -> bool:
-    return a[0] == -b[0] and a[1] == -b[1]
+def is_legal_move(move: Vector, from_dir: Vector, to_dir: Vector) -> bool:
+    """A move may not point backwards against either cell's direction, and may not
+    enter the opposite lane.
 
-
-def is_legal_move(move: Position, from_dir: Position, to_dir: Position) -> bool:
+    Moving down from an 'Up' cell is illegal. Sideways moves are legal: that is how a
+    car on a 'v' column crosses a row of '<' cells at an intersection.
+    """
     if _dot(move, from_dir) < 0 or _dot(move, to_dir) < 0:
         return False
-    return not _is_opposite(from_dir, to_dir)
+    return to_dir != (-from_dir[0], -from_dir[1])
 
 
-def move_cost(move: Position, from_dir: Position) -> float:
-    """Straight driving is cheapest, so routes only change lanes when it pays off."""
+def move_cost(move: Vector, from_dir: Vector) -> float:
     if move == from_dir:
-        return 1.0
+        return STRAIGHT_COST
     if _dot(move, from_dir) > 0:
-        return math.sqrt(2)  # diagonal lane change
-    return 1.5  # sideways: crossing an intersection or changing lane
+        return DIAGONAL_COST
+    return SIDEWAYS_COST
 
 
-def infer_light_directions(
-    road_dirs: dict[Position, Position], lights: list[Position]
-) -> dict[Position, Position]:
-    """A traffic light sits on a road cell; it takes the direction of the road feeding it.
+def infer_light_directions(road_dirs: Drivable, lights: list[Position]) -> Drivable:
+    """A light sits on a road, so it points the same way as the road cell feeding it.
 
-    Lights can come in rows (a light feeding another light), so this repeats until stable.
+    Lights can feed other lights, so this repeats until every light is resolved.
     """
     known = dict(road_dirs)
     pending = set(lights)
     while pending:
-        resolved = {}
-        for light in pending:
-            for direction in DIRECTION_VECTORS.values():
-                source = (light[0] - direction[0], light[1] - direction[1])
-                if known.get(source) == direction:
-                    resolved[light] = direction
-                    break
+        resolved = {
+            light: direction
+            for light in pending
+            for direction in DIRECTION_VECTORS.values()
+            if known.get(step(light, (-direction[0], -direction[1]))) == direction
+        }
         if not resolved:
-            raise ValueError(f"cannot infer a direction for lights at {sorted(pending)}")
+            raise ValueError(
+                f"cannot infer a direction for lights at {sorted(pending)}"
+            )
         known.update(resolved)
         pending -= resolved.keys()
     return {light: known[light] for light in lights}
 
 
-def _clears_corners(start: Position, move: Position, drivable: dict) -> bool:
+def _clears_corners(start: Position, move: Vector, drivable: Drivable) -> bool:
     """A diagonal move passes between two cells; both must be road, so cars never clip
     a building corner."""
     if 0 in move:
         return True
-    x, y = start
-    return (x + move[0], y) in drivable and (x, y + move[1]) in drivable
+    return (
+        step(start, (move[0], 0)) in drivable and step(start, (0, move[1])) in drivable
+    )
 
 
-def build_street_graph(
-    drivable: dict[Position, Position], destinations: set[Position]
-) -> nx.DiGraph:
-    """Nodes are drivable cells and destinations; destinations are entered from any side
-    and have no outgoing edges."""
+def build_street_graph(drivable: Drivable, destinations: Set[Position]) -> nx.DiGraph:
+    """Nodes are drivable cells and destinations. A destination is entered straight from
+    any side (never diagonally) and has no outgoing edges."""
     graph = nx.DiGraph()
     graph.add_nodes_from(drivable)
     graph.add_nodes_from(destinations)
-    for (x, y), from_dir in drivable.items():
+    for pos, from_dir in drivable.items():
         for move in NEIGHBOR_OFFSETS:
-            target = (x + move[0], y + move[1])
+            target = step(pos, move)
             if target in destinations and 0 in move:
-                graph.add_edge((x, y), target, weight=1.0)
+                graph.add_edge(pos, target, weight=STRAIGHT_COST)
             elif (
                 target in drivable
                 and is_legal_move(move, from_dir, drivable[target])
-                and _clears_corners((x, y), move, drivable)
+                and _clears_corners(pos, move, drivable)
             ):
-                graph.add_edge((x, y), target, weight=move_cost(move, from_dir))
+                graph.add_edge(pos, target, weight=move_cost(move, from_dir))
     return graph
 
 
 def _octile(a: Position, b: Position) -> float:
     dx, dy = abs(a[0] - b[0]), abs(a[1] - b[1])
-    return max(dx, dy) + (math.sqrt(2) - 1) * min(dx, dy)
+    return max(dx, dy) + (DIAGONAL_COST - 1) * min(dx, dy)
 
 
 def shortest_route(
-    graph: nx.DiGraph, start: Position, goal: Position, avoid: set[Position] = frozenset()
+    graph: nx.DiGraph,
+    start: Position,
+    goal: Position,
+    avoid: Set[Position] = frozenset(),
 ) -> list[Position]:
-    """A* route from start (excluded) to goal (included); empty when unreachable.
+    """A* route from start (excluded) to goal (included); empty when there is no path.
 
-    `avoid` lets a stuck car plan around cells that are currently blocked.
+    `avoid` lets a stuck car plan around cells that are currently blocked. A start or
+    goal missing from the graph is a bug, so that error is not caught here.
     """
-    view = nx.restricted_view(graph, avoid - {start, goal}, []) if avoid else graph
+    view = nx.restricted_view(graph, set(avoid) - {start, goal}, []) if avoid else graph
     try:
         path = nx.astar_path(view, start, goal, heuristic=_octile, weight="weight")
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
+    except nx.NetworkXNoPath:
         return []
     return path[1:]

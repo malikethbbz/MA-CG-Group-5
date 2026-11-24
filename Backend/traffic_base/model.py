@@ -1,5 +1,8 @@
 import json
+import logging
+from collections.abc import Set
 from pathlib import Path
+from typing import TypedDict
 
 import networkx as nx
 from mesa import Model
@@ -8,27 +11,47 @@ from mesa.discrete_space import OrthogonalMooreGrid
 from .agent import Car, Destination, Obstacle, Road, Traffic_Light
 from .city_graph import (
     DIRECTION_VECTORS,
+    Drivable,
     Position,
     build_street_graph,
     infer_light_directions,
     shortest_route,
 )
 
+logger = logging.getLogger(__name__)
+
 CITY_FILES = Path(__file__).resolve().parent.parent / "city_files"
 DEFAULT_MAP = "2025_base.txt"
 SPAWN_INTERVAL = 10
 ROAD_SYMBOLS = "<>^v"
 LIGHT_SYMBOLS = "sS"
+# Agents a single cell can hold; a road cell holds the road, maybe a light, and a car.
+CELL_CAPACITY = 100
+
+
+class Stats(TypedDict):
+    """Body of /getStatus. Averages cover arrived cars only and are None until one
+    arrives."""
+
+    step: int
+    running: bool
+    stopReason: str | None
+    spawned: int
+    arrived: int
+    active: int
+    avgTripSteps: float | None
+    avgWaitSteps: float | None
 
 
 class CityModel(Model):
     """City built from a map file. Cars appear at the map corners every SPAWN_INTERVAL
-    steps and are removed when they reach their destination. The simulation stops when
-    a spawn step cannot place any car."""
+    steps and are removed at their destination. The run stops when a spawn step cannot
+    place any car.
+    """
 
     def __init__(
         self, map_name: str = DEFAULT_MAP, seed: int = 42, map_dir: Path = CITY_FILES
-    ):
+    ) -> None:
         super().__init__(rng=seed)
         symbols = json.loads((map_dir / "mapDictionary.json").read_text())
         lines = [
@@ -36,38 +59,47 @@ class CityModel(Model):
             for line in (map_dir / map_name).read_text().splitlines()
             if line.strip()
         ]
+        if not lines:
+            raise ValueError(f"map {map_name} is empty")
         self.width = len(lines[0])
         self.height = len(lines)
         self.grid = OrthogonalMooreGrid(
-            [self.width, self.height], capacity=100, torus=False, random=self.random
+            [self.width, self.height],
+            capacity=CELL_CAPACITY,
+            torus=False,
+            random=self.random,
         )
         self.traffic_lights: list[Traffic_Light] = []
         self.destinations: list[Position] = []
         self.spawned = 0
         self.arrived = 0
-        self.trip_steps = 0
+        self.arrived_trip_steps = 0
         self.arrived_wait_steps = 0
+        self.stop_reason: str | None = None
 
         road_dirs, light_cells = self._place_map(lines, symbols)
         light_dirs = infer_light_directions(road_dirs, list(light_cells))
-        self.drivable = {**road_dirs, **light_dirs}
+        self.drivable: Drivable = {**road_dirs, **light_dirs}
         self._place_lights(light_cells, symbols)
         self.graph = build_street_graph(self.drivable, set(self.destinations))
         self.spawn_points = self._corner_spawns()
         self.reachable = {
-            start: [d for d in self.destinations if d in descendants]
-            for start in self.spawn_points
-            for descendants in [nx.descendants(self.graph, start)]
+            start: self._reachable_from(start) for start in self.spawn_points
         }
         self.running = True
         self._spawn_cars()
 
-    def _place_map(self, lines: list[str], symbols: dict):
-        road_dirs: dict[Position, tuple[int, int]] = {}
+    def _place_map(
+        self, lines: list[str], symbols: dict[str, str | int]
+    ) -> tuple[Drivable, dict[Position, str]]:
+        road_dirs: Drivable = {}
         light_cells: dict[Position, str] = {}
         for r, row in enumerate(lines):
             for c, char in enumerate(row):
-                pos = (c, self.height - r - 1)
+                pos = (
+                    c,
+                    self.height - r - 1,
+                )  # file row 0 is the top; grid y=0 is the bottom
                 cell = self.grid[pos]
                 if char in ROAD_SYMBOLS:
                     Road(self, cell, symbols[char])
@@ -81,8 +113,10 @@ class CityModel(Model):
                     self.destinations.append(pos)
         return road_dirs, light_cells
 
-    def _place_lights(self, light_cells: dict[Position, str], symbols: dict):
-        # 's' is green first for its duration, then 'S' for its own.
+    def _place_lights(
+        self, light_cells: dict[Position, str], symbols: dict[str, str | int]
+    ) -> None:
+        # One cycle of s + S steps: 's' is green on [0, s), 'S' on [s, s + S).
         short_green, long_green = int(symbols["s"]), int(symbols["S"])
         cycle = short_green + long_green
         slots = {"s": (0, short_green), "S": (short_green, long_green)}
@@ -101,8 +135,15 @@ class CityModel(Model):
         # dict.fromkeys drops repeated corners on one-row or one-column maps.
         return [c for c in dict.fromkeys(corners) if c in self.drivable]
 
+    def _reachable_from(self, start: Position) -> list[Position]:
+        descendants = nx.descendants(self.graph, start)
+        reachable = [d for d in self.destinations if d in descendants]
+        if not reachable:
+            logger.warning("spawn corner %s cannot reach any destination", start)
+        return reachable
+
     def route(
-        self, start: Position, goal: Position, avoid: set[Position] = frozenset()
+        self, start: Position, goal: Position, avoid: Set[Position] = frozenset()
     ) -> list[Position]:
         return shortest_route(self.graph, start, goal, avoid)
 
@@ -112,42 +153,52 @@ class CityModel(Model):
     def _spawn_cars(self) -> int:
         placed = 0
         for start in self.spawn_points:
-            if not self._is_free(start):
-                continue
-            if not self.reachable[start]:
-                continue
-            destination = self.random.choice(self.reachable[start])
-            Car(self, self.grid[start], destination, self.drivable[start])
-            placed += 1
+            if self._is_free(start) and self.reachable[start]:
+                destination = self.random.choice(self.reachable[start])
+                Car(self, self.grid[start], destination, self.drivable[start])
+                placed += 1
         self.spawned += placed
         return placed
 
-    def car_arrived(self, car: Car):
+    def _why_no_spawn(self) -> str:
+        if not any(self.reachable.values()):
+            return "no spawn corner can reach a destination"
+        return "every spawn corner is occupied"
+
+    def record_arrival(self, trip_steps: int, wait_steps: int) -> None:
         self.arrived += 1
-        self.trip_steps += car.age
-        self.arrived_wait_steps += car.wait_steps
-        car.remove()
+        self.arrived_trip_steps += trip_steps
+        self.arrived_wait_steps += wait_steps
 
     @property
     def active_cars(self) -> int:
         return len(self.agents_by_type.get(Car, []))
 
-    def stats(self) -> dict:
+    def stats(self) -> Stats:
+        def average(total: int) -> float | None:
+            return total / self.arrived if self.arrived else None
+
         return {
             "step": self.steps,
             "running": self.running,
+            "stopReason": self.stop_reason,
             "spawned": self.spawned,
             "arrived": self.arrived,
             "active": self.active_cars,
-            "avgTripSteps": self.trip_steps / self.arrived if self.arrived else 0,
-            "avgWaitSteps": self.arrived_wait_steps / self.arrived if self.arrived else 0,
+            "avgTripSteps": average(self.arrived_trip_steps),
+            "avgWaitSteps": average(self.arrived_wait_steps),
         }
 
-    def step(self):
-        """Lights change first so cars see this step's colors, then cars move, then spawn."""
+    def step(self) -> None:
+        """Lights change first so cars see this step's colors, then cars move, then
+        cars spawn. Mesa has already incremented self.steps when this runs."""
         for light in self.traffic_lights:
             light.step()
         if Car in self.agents_by_type:
             self.agents_by_type[Car].shuffle_do("step")
         if self.steps % SPAWN_INTERVAL == 0 and self._spawn_cars() == 0:
             self.running = False
+            self.stop_reason = self._why_no_spawn()
+            logger.warning(
+                "simulation stopped at step %s: %s", self.steps, self.stop_reason
+            )
