@@ -1,10 +1,13 @@
 """Endpoint tests through Flask's test client."""
 
+import itertools
+
 import pytest
 from flask.testing import FlaskClient
 
 import city_server
 from conftest import TinyCity
+from traffic_base.city_graph import DIRECTION_VECTORS
 
 
 @pytest.fixture()
@@ -129,3 +132,89 @@ def test_update_stops_advancing_once_the_run_stops(
     assert last["currentStep"] == 20
     status = client.get("/getStatus").get_json()
     assert status["stopReason"] == "every spawn corner is occupied"
+
+
+@pytest.mark.parametrize("path", ["/city", "/step"])
+def test_frame_endpoints_get_a_409_before_init(client: FlaskClient, path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 409
+    assert "/init" in response.get_json()["message"]
+
+
+def test_city_holds_every_cell_the_old_endpoints_report(client: FlaskClient) -> None:
+    client.post("/init", json={})
+    city = client.get("/city").get_json()
+    old = {
+        key: len(client.get(path).get_json()["positions"])
+        for key, path in (
+            ("roads", "/getRoads"),
+            ("obstacles", "/getObstacles"),
+            ("destinations", "/getDestinations"),
+            ("lights", "/getTrafficLights"),
+        )
+    }
+    assert {key: len(city[key]) for key in old} == old
+    assert old == {"roads": 772, "obstacles": 414, "destinations": 26, "lights": 48}
+    assert (city["width"], city["height"], city["helipads"]) == (36, 35, [])
+
+
+def test_each_light_points_the_way_of_the_cell_feeding_it(client: FlaskClient) -> None:
+    client.post("/init", json={})
+    city = client.get("/city").get_json()
+    directions = {
+        (cell["x"], cell["z"]): cell["direction"]
+        for cell in city["roads"] + city["lights"]
+    }
+    for light in city["lights"]:
+        dx, dz = DIRECTION_VECTORS[light["direction"]]
+        assert directions.get((light["x"] - dx, light["z"] - dz)) == light["direction"]
+
+
+def test_city_and_step_name_the_same_lights(client: FlaskClient) -> None:
+    client.post("/init", json={})
+    city_ids = [light["id"] for light in client.get("/city").get_json()["lights"]]
+    step_ids = [light["id"] for light in client.get("/step").get_json()["lights"]]
+    assert len(set(city_ids)) == len(city_ids) == 48
+    assert set(step_ids) == set(city_ids)
+
+
+def test_a_vehicle_vanishes_only_in_the_frame_that_reports_its_arrival(
+    client: FlaskClient,
+) -> None:
+    client.post("/init", json={})
+    frames = [client.get("/step").get_json() for _ in range(60)]
+    arrivals = 0
+    for before, after in itertools.pairwise(frames):
+        kinds = {v["id"]: v["kind"] for v in before["vehicles"]}
+        now = {v["id"]: v["kind"] for v in after["vehicles"]}
+        arrived = {e["id"] for e in after["events"] if e["type"] == "arrived"}
+        assert kinds.keys() - now.keys() == arrived
+        assert all(now[i] == kinds[i] for i in kinds.keys() & now.keys())
+        assert after["step"] == before["step"] + 1
+        arrivals += len(arrived)
+    # Seed 42 gives five arrivals, two on consecutive steps, so an off-by-one shows.
+    assert arrivals >= 5
+
+
+def test_step_stops_advancing_once_the_run_stops(
+    client: FlaskClient, tiny_city: TinyCity
+) -> None:
+    city_server.city_model = tiny_city([">>s>D"], short_green=1, long_green=1000)
+    frames = [client.get("/step").get_json() for _ in range(30)]
+    assert [f["step"] for f in frames[19:]] == [20] * 11
+    assert frames[-1]["running"] is False
+    assert frames[-1]["stats"]["stopReason"] == "every spawn corner is occupied"
+
+
+def test_a_stopped_run_does_not_report_its_last_events_again(
+    client: FlaskClient, tiny_city: TinyCity
+) -> None:
+    # The light lets the first car through, then holds every later car on the corner,
+    # so the spawn at step 20 fails on the step the first car arrives.
+    city_server.city_model = tiny_city(
+        [">s" + ">" * 18 + "D"], short_green=10, long_green=1000
+    )
+    frames = [client.get("/step").get_json() for _ in range(22)]
+    assert [f["step"] for f in frames[-3:]] == [20, 20, 20]
+    assert [e["type"] for e in frames[-3]["events"]] == ["arrived"]
+    assert frames[-2]["events"] == frames[-1]["events"] == []
