@@ -2,6 +2,7 @@
 # Flask server that runs the Mesa city model and serves its state to the WebGL client.
 # Based on Octavio Navarro's 2024 example.
 
+import json
 import logging
 import os
 from collections.abc import Callable
@@ -75,12 +76,16 @@ def _respond(build: Callable[[], JsonDict]) -> Reply:
 
 def _parse_init_params() -> tuple[str, int]:
     """Returns (map_name, seed); raises InitParamsError with a client-facing message."""
-    params = request.get_json(silent=True)
-    if params is None and request.get_data():
-        raise InitParamsError("Body must be JSON.")
-    if not isinstance(params or {}, dict):
+    raw = request.get_data()
+    params: object = {}  # no body means "use the defaults"
+    if raw:
+        # Parsed by hand: get_json returns None for both bad JSON and a `null` body.
+        try:
+            params = json.loads(raw)
+        except ValueError as error:
+            raise InitParamsError("Body must be JSON.") from error
+    if not isinstance(params, dict):
         raise InitParamsError("Body must be a JSON object.")
-    params = params or {}
     map_name = params.get("map", DEFAULT_MAP)
     if not isinstance(map_name, str) or map_name not in AVAILABLE_MAPS:
         raise InitParamsError(f"Unknown map. Options: {sorted(AVAILABLE_MAPS)}")

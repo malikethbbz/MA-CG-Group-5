@@ -44,6 +44,22 @@ def test_init_rejects_a_body_that_is_not_a_json_object(
     assert city_server.city_model is None
 
 
+@pytest.mark.parametrize("body", ["[]", "0", '""', "false", "null"])
+def test_init_rejects_a_falsy_json_body_that_is_not_an_object(
+    client: FlaskClient, body: str
+) -> None:
+    response = client.post("/init", data=body, content_type="application/json")
+    assert response.status_code == 400
+    assert response.get_json()["message"] == "Body must be a JSON object."
+    assert city_server.city_model is None
+
+
+def test_init_without_a_body_uses_the_default_map(client: FlaskClient) -> None:
+    response = client.post("/init")
+    assert response.status_code == 200
+    assert response.get_json()["width"] == 36
+
+
 @pytest.mark.parametrize("seed", [-1, 2**32, "7", 1.5, True])
 def test_init_rejects_seeds_that_are_not_small_integers(
     client: FlaskClient, seed: object
