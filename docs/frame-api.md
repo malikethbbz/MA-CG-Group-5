@@ -45,7 +45,8 @@ Advances the model one step (if it is still running) and returns everything that
 - `y` is altitude in cells, 0 on the road. Flying units send `y > 0`.
 - `heading` is the last one-cell move, so a diagonal is `{"x": 1, "z": 1}`.
 - `state` is kind-specific: a car is `driving` or `waiting`.
-- `events` only lists what happened during this step.
+- `events` only lists what happened during this step. Once the run has stopped, `/step`
+  returns the final frame again with `events: []`, so no event is reported twice.
 - A call before `/init` returns 409.
 
 The frontend should interpolate each vehicle between its last two frames so motion is

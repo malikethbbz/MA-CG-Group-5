@@ -13,6 +13,7 @@ from flask_cors import CORS
 from mesa import Agent
 
 from traffic_base.agent import Car, Destination, Obstacle, Road, Traffic_Light
+from traffic_base.city_graph import DIRECTION_VECTORS, Position
 from traffic_base.model import CITY_FILES, DEFAULT_MAP, CityModel
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ DEFAULT_SEED = 42
 MAX_SEED = 2**32  # numpy's seed range
 DEFAULT_PORT = 8585
 AVAILABLE_MAPS = {path.name for path in CITY_FILES.glob("*.txt")}
+DIRECTION_NAMES = {vector: name for name, vector in DIRECTION_VECTORS.items()}
 
 city_model: CityModel | None = None
 
@@ -55,11 +57,15 @@ def _position(agent: Agent, **extra: object) -> JsonDict:
     return {"id": str(agent.unique_id), "x": x, "y": 1, "z": y, **extra}
 
 
+def _agents_of(model: CityModel, agent_type: type[Agent]) -> list[Agent]:
+    # A type with no agents yet (no cars at step 0) is simply an empty list.
+    return list(model.agents_by_type.get(agent_type, []))
+
+
 def _positions_of(
     agent_type: type[Agent], describe: Callable[[Any], JsonDict] = lambda _: {}
 ) -> list[JsonDict]:
-    # A type with no agents yet (no cars at step 0) is simply an empty list.
-    agents = _require_model().agents_by_type.get(agent_type, [])
+    agents = _agents_of(_require_model(), agent_type)
     return [_position(agent, **describe(agent)) for agent in agents]
 
 
@@ -116,6 +122,67 @@ def init_model() -> Reply:
     )
 
 
+def _xz(pos: Position, **extra: object) -> JsonDict:
+    """Grid (x, y) maps to world (x, z); the frontend picks each mesh's height."""
+    x, y = pos
+    return {"x": x, "z": y, **extra}
+
+
+def _city() -> JsonDict:
+    model = _require_model()
+    return {
+        "width": model.width,
+        "height": model.height,
+        "roads": [
+            _xz(road.cell.coordinate, direction=road.direction)
+            for road in _agents_of(model, Road)
+        ],
+        "obstacles": [_xz(o.cell.coordinate) for o in _agents_of(model, Obstacle)],
+        "destinations": [
+            _xz(d.cell.coordinate) for d in _agents_of(model, Destination)
+        ],
+        "lights": [
+            _xz(
+                light.cell.coordinate,
+                id=str(light.unique_id),
+                direction=DIRECTION_NAMES[model.drivable[light.cell.coordinate]],
+            )
+            for light in model.traffic_lights
+        ],
+        "helipads": [_xz(pos) for pos in model.helipads],
+    }
+
+
+def _frame() -> JsonDict:
+    model = _require_model()
+    advanced = model.running
+    if advanced:
+        model.step()
+    return {
+        "step": model.steps,
+        "running": model.running,
+        "stats": dict(model.stats()),
+        "lights": [
+            {"id": str(light.unique_id), "green": light.state}
+            for light in model.traffic_lights
+        ],
+        "vehicles": model.vehicles(),
+        # A stopped run sends its last frame again; its events were already sent.
+        "events": model.events if advanced else [],
+    }
+
+
+@app.route("/city", methods=["GET"])
+def get_city() -> Reply:
+    return _respond(_city)
+
+
+@app.route("/step", methods=["GET"])
+def step_model() -> Reply:
+    return _respond(_frame)
+
+
+# Per-type endpoints the current frontend still polls; /city and /step replace them.
 @app.route("/getAgents", methods=["GET"])
 def get_agents() -> Reply:
     def car(c: Car) -> JsonDict:

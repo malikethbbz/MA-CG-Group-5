@@ -89,13 +89,15 @@ then `S` lights for the next 15, so crossing streets are never green at the same
 | Endpoint | Method | Returns |
 |----------|--------|---------|
 | `/init` | GET, POST | Creates the model. POST body: `{"map": "2025_base.txt", "seed": 42}` (both optional) |
-| `/update` | GET | Advances one step while the simulation is running |
-| `/getAgents` | GET | Cars: `id`, `x`, `y`, `z`, `heading` |
-| `/getTrafficLights` | GET | Lights: position and `state` (`true` = green) |
-| `/getObstacles` | GET | Building positions |
-| `/getRoads` | GET | Road positions and `direction` |
-| `/getDestinations` | GET | Destination positions |
-| `/getStatus` | GET | Step, `running`, `stopReason`, spawned / arrived / active cars, average trip and wait steps (`null` until a car arrives) |
+| `/city` | GET | Static map: size, roads, obstacles, destinations, lights (with `direction`) and helipads. See [`docs/frame-api.md`](docs/frame-api.md) |
+| `/step` | GET | Advances one step while running and returns the frame: stats, light colors, vehicles and this step's events. See [`docs/frame-api.md`](docs/frame-api.md) |
+| `/update` | GET | Deprecated: use `/step`. Advances one step while the simulation is running |
+| `/getAgents` | GET | Deprecated: use `/step`. Cars: `id`, `x`, `y`, `z`, `heading` |
+| `/getTrafficLights` | GET | Deprecated: use `/city` and `/step`. Lights: position and `state` (`true` = green) |
+| `/getObstacles` | GET | Deprecated: use `/city`. Building positions |
+| `/getRoads` | GET | Deprecated: use `/city`. Road positions and `direction` |
+| `/getDestinations` | GET | Deprecated: use `/city`. Destination positions |
+| `/getStatus` | GET | Deprecated: use `/step`'s `stats`. Step, `running`, `stopReason`, spawned / arrived / active cars, average trip and wait steps (`null` until a car arrives) |
 
 Grid `(x, y)` maps to world `(x, z)`; `y` is the height in the 3D scene. Calls made
 before `/init` return `409`.
