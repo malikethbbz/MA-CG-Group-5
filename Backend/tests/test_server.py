@@ -155,7 +155,8 @@ def test_city_holds_every_cell_the_old_endpoints_report(client: FlaskClient) -> 
     }
     assert {key: len(city[key]) for key in old} == old
     assert old == {"roads": 772, "obstacles": 414, "destinations": 26, "lights": 48}
-    assert (city["width"], city["height"], city["helipads"]) == (36, 35, [])
+    assert (city["width"], city["height"]) == (36, 35)
+    assert city["helipads"] == [{"x": 2, "z": 2}, {"x": 33, "z": 32}]
 
 
 def test_each_light_points_the_way_of_the_cell_feeding_it(client: FlaskClient) -> None:
