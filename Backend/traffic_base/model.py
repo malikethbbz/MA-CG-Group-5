@@ -9,6 +9,14 @@ from mesa import Model
 from mesa.discrete_space import OrthogonalMooreGrid
 
 from .agent import Car, Destination, Obstacle, Road, Traffic_Light
+from .ambulance import (
+    EMERGENCY_INTERVAL,
+    Ambulance,
+    car_on,
+    choose_helipads,
+    maybe_open_emergency,
+    static_landing_spots,
+)
 from .city_graph import (
     DIRECTION_VECTORS,
     Drivable,
@@ -42,12 +50,14 @@ class Stats(TypedDict):
     active: int
     avgTripSteps: float | None
     avgWaitSteps: float | None
+    emergenciesServed: int
 
 
 class CityModel(Model):
     """City built from a map file. Cars appear at the map corners every SPAWN_INTERVAL
     steps and are removed at their destination. The run stops when a spawn step cannot
-    place any car.
+    place any car. Two ambulances serve emergencies that open every
+    EMERGENCY_INTERVAL steps; they are not cars for spawning, stats or stopping.
     """
 
     def __init__(
@@ -72,7 +82,9 @@ class CityModel(Model):
         )
         self.traffic_lights: list[Traffic_Light] = []
         self.destinations: list[Position] = []
-        self.helipads: list[Position] = []  # ambulance homes, filled once they exist
+        self.buildings: list[Position] = []
+        self.reserved: set[Position] = set()  # road cells held by a landing ambulance
+        self.emergencies_served = 0
         self.spawned = 0
         self.arrived = 0
         self.arrived_trip_steps = 0
@@ -89,6 +101,7 @@ class CityModel(Model):
         self.reachable = {
             start: self._reachable_from(start) for start in self.spawn_points
         }
+        self._place_ambulances({t.cell.coordinate for t in self.traffic_lights})
         self.running = True
         self._spawn_cars()
 
@@ -111,6 +124,7 @@ class CityModel(Model):
                     light_cells[pos] = char
                 elif char == "#":
                     Obstacle(self, cell)
+                    self.buildings.append(pos)
                 elif char == "D":
                     Destination(self, cell)
                     self.destinations.append(pos)
@@ -138,6 +152,19 @@ class CityModel(Model):
         # dict.fromkeys drops repeated corners on one-row or one-column maps.
         return [c for c in dict.fromkeys(corners) if c in self.drivable]
 
+    def _place_ambulances(self, lights: set[Position]) -> None:
+        """One ambulance per helipad. Helipads never host an emergency; any other
+        building can if it has a landing spot."""
+        self.helipads = choose_helipads(self.buildings, self.width, self.height)
+        self.ambulances = [Ambulance(self, pad) for pad in self.helipads]
+        spawns = set(self.spawn_points)
+        spots = {
+            building: static_landing_spots(building, self.drivable, lights, spawns)
+            for building in self.buildings
+            if building not in self.helipads
+        }
+        self.landing_spots = {b: s for b, s in spots.items() if s}
+
     def _reachable_from(self, start: Position) -> list[Position]:
         descendants = nx.descendants(self.graph, start)
         reachable = [d for d in self.destinations if d in descendants]
@@ -151,7 +178,7 @@ class CityModel(Model):
         return shortest_route(self.graph, start, goal, avoid)
 
     def _is_free(self, pos: Position) -> bool:
-        return not any(isinstance(a, Car) for a in self.grid[pos].agents)
+        return not car_on(self, pos)
 
     def _spawn_cars(self) -> int:
         placed = 0
@@ -168,8 +195,11 @@ class CityModel(Model):
             return "no spawn corner can reach a destination"
         return "every spawn corner is occupied"
 
-    def emit(self, event_type: str, agent_id: int) -> None:
-        self.events.append({"type": event_type, "id": str(agent_id)})
+    def emit(self, event_type: str, agent_id: int, at: Position | None = None) -> None:
+        event: Event = {"type": event_type, "id": str(agent_id)}
+        if at is not None:
+            event["x"], event["z"] = at
+        self.events.append(event)
 
     def vehicles(self) -> list[VehicleFrame]:
         return [agent.frame() for agent in self.agents if isinstance(agent, Vehicle)]
@@ -197,14 +227,18 @@ class CityModel(Model):
             "active": self.active_cars,
             "avgTripSteps": average(self.arrived_trip_steps),
             "avgWaitSteps": average(self.arrived_wait_steps),
+            "emergenciesServed": self.emergencies_served,
         }
 
     def step(self) -> None:
-        """Lights change first so cars see this step's colors, then cars move, then
-        cars spawn. Mesa has already incremented self.steps when this runs."""
+        """Lights change first so cars see this step's colors, then ambulances move so
+        cars see this step's reservations, then cars move, then cars spawn and
+        emergencies open. Mesa has already incremented self.steps when this runs."""
         self.events = []
         for light in self.traffic_lights:
             light.step()
+        for ambulance in self.ambulances:
+            ambulance.step()
         if Car in self.agents_by_type:
             self.agents_by_type[Car].shuffle_do("step")
         if self.steps % SPAWN_INTERVAL == 0 and self._spawn_cars() == 0:
@@ -213,3 +247,5 @@ class CityModel(Model):
             logger.warning(
                 "simulation stopped at step %s: %s", self.steps, self.stop_reason
             )
+        if self.steps % EMERGENCY_INTERVAL == 0:
+            maybe_open_emergency(self)

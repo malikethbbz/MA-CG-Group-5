@@ -20,8 +20,8 @@ PATIENCE = 3
 
 class Car(CellAgent):
     """Drives an A* route to its destination. Each step runs the first rule that
-    applies: no route -> wait; red light ahead -> stop; car ahead -> wait or reroute;
-    otherwise drive.
+    applies: no route -> wait; red light ahead -> stop; car or ambulance reservation
+    ahead -> wait or reroute; otherwise drive.
     """
 
     kind = "car"
@@ -52,7 +52,7 @@ class Car(CellAgent):
             self._wait()
         elif self._red_light_ahead(self.route[0]):
             self._wait()
-        elif self._car_at(self.route[0]):
+        elif self._blocked(self.route[0]):
             self._handle_blocked()
         else:
             self._drive()
@@ -68,7 +68,10 @@ class Car(CellAgent):
         agents = self.model.grid[pos].agents
         return next((a for a in agents if isinstance(a, Traffic_Light)), None)
 
-    def _car_at(self, pos: Position) -> bool:
+    def _blocked(self, pos: Position) -> bool:
+        """A car is there, or an ambulance reserved it to land (see ambulance.py)."""
+        if pos in self.model.reserved:
+            return True
         return any(isinstance(a, Car) for a in self.model.grid[pos].agents)
 
     def _handle_blocked(self) -> None:
