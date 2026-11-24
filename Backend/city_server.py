@@ -1,149 +1,123 @@
 # TC2008B. Sistemas Multiagentes y Gráficas Computacionales
 # Python flask server to interact with webGL.
-# Octavio Navarro. 2024
+# Based on Octavio Navarro's 2024 example.
 
+import logging
 import os
-from flask import Flask, request, jsonify
-from flask_cors import CORS, cross_origin
-from traffic_base.agent import *
-from traffic_base.model import CityModel
 
-# Size of the board:
-number_agents = 10
-width = 28
-height = 28
-cityModel = None
-currentStep = 0
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
-# This application will be used to interact with WebGL
+from traffic_base.agent import Car, Destination, Obstacle, Road, Traffic_Light
+from traffic_base.model import CITY_FILES, DEFAULT_MAP, CityModel
+
+logger = logging.getLogger(__name__)
+
 app = Flask("Traffic example")
-cors = CORS(app, origins=["http://localhost"])
+CORS(app, origins=[r"http://localhost(:\d+)?", r"http://127\.0\.0\.1(:\d+)?"])
+
+city_model: CityModel | None = None
+AVAILABLE_MAPS = {path.name for path in CITY_FILES.glob("*.txt")}
 
 
-# This route will be used to send the parameters of the simulation to the server.
-# The servers expects a POST request with the parameters in a.json.
+def _require_model() -> CityModel:
+    if city_model is None:
+        raise RuntimeError("model not initialized; call /init first")
+    return city_model
+
+
+def _position(agent, **extra) -> dict:
+    """Grid (x, y) maps to world (x, z); y is the height in the 3D scene."""
+    x, y = agent.cell.coordinate
+    return {"id": str(agent.unique_id), "x": x, "y": 1, "z": y, **extra}
+
+
+def _positions_of(agent_type, describe=lambda agent: {}) -> list[dict]:
+    agents = _require_model().agents_by_type.get(agent_type, [])
+    return [_position(agent, **describe(agent)) for agent in agents]
+
+
+def _respond(build):
+    try:
+        return jsonify(build())
+    except Exception:
+        logger.exception("request failed")
+        return jsonify({"message": "Server error, check the server log."}), 500
+
+
 @app.route("/init", methods=["GET", "POST"])
-@cross_origin()
-def initModel():
-    global currentStep, cityModel, number_agents, width, height
-
-    if request.method == "POST":
-        try:
-            number_agents = int(request.json.get("NAgents"))
-            width = int(request.json.get("width"))
-            height = int(request.json.get("height"))
-            currentStep = 0
-
-        except Exception as e:
-            print(e)
-            return jsonify({"message": "Error initializing the model"}), 500
-
-    print(f"Model parameters:{number_agents, width, height}")
-
-    # Create the model using the parameters sent by the application
-    cityModel = CityModel(number_agents)
-
-    # Return a message to saying that the model was created successfully
+def init_model():
+    global city_model
+    params = request.get_json(silent=True) or {}
+    map_name = params.get("map", DEFAULT_MAP)
+    if map_name not in AVAILABLE_MAPS:
+        return jsonify({"message": f"Unknown map. Options: {sorted(AVAILABLE_MAPS)}"}), 400
+    try:
+        seed = int(params.get("seed", 42))
+        city_model = CityModel(map_name=map_name, seed=seed)
+    except (ValueError, TypeError):
+        logger.exception("bad /init parameters")
+        return jsonify({"message": "Invalid map or seed."}), 400
     return jsonify(
-        {"message": f"Parameters recieved, model initiated.\nSize: {width}x{height}"}
+        {
+            "message": "Model initiated.",
+            "width": city_model.width,
+            "height": city_model.height,
+        }
     )
 
 
-# This route will be used to get the positions of the agents
 @app.route("/getAgents", methods=["GET"])
-@cross_origin()
-def getAgents():
-    global cityModel
+def get_agents():
+    def car(c: Car) -> dict:
+        return {"heading": {"x": c.heading[0], "z": c.heading[1]}}
 
-    if request.method == "GET":
-        # Get the positions of the agents and return them to WebGL in JSON.json.t.
-        # Note that the positions are sent as a list of dictionaries, where each dictionary has the id and position of an agent.
-        # The y coordinate is set to 1, since the agents are in a 3D world. The z coordinate corresponds to the row (y coordinate) of the grid in mesa.
-        try:
-            agentCells = cityModel.grid.all_cells.select(
-                lambda cell: any(isinstance(obj, Car) for obj in cell.agents)
-            ).cells
-            # print(f"CELLS: {agentCells}")
-
-            agents = [
-                (cell.coordinate, agent)
-                for cell in agentCells
-                for agent in cell.agents
-                if isinstance(agent, Car)
-            ]
-            # print(f"AGENTS: {agents}")
-
-            agentPositions = [
-                {"id": str(a.unique_id), "x": coordinate[0], "y": 1, "z": coordinate[1]}
-                for (coordinate, a) in agents
-            ]
-            # print(f"AGENT POSITIONS: {agentPositions}")
-
-            return jsonify({"positions": agentPositions})
-        except Exception as e:
-            print(e)
-            return jsonify({"message": "Error with the agent positions"}), 500
+    return _respond(lambda: {"positions": _positions_of(Car, car)})
 
 
-# This route will be used to get the positions of the obstacles
 @app.route("/getObstacles", methods=["GET"])
-@cross_origin()
-def getObstacles():
-    global cityModel
-
-    if request.method == "GET":
-        try:
-            # Get the positions of the obstacles and return them to WebGL in JSON.json.t.
-            # Same as before, the positions are sent as a list of dictionaries, where each dictionary has the id and position of an obstacle.
-
-            obstacleCells = cityModel.grid.all_cells.select(
-                lambda cell: any(isinstance(obj, Obstacle) for obj in cell.agents)
-            )
-            # print(f"CELLS: {agentCells}")
-
-            agents = [
-                (cell.coordinate, agent)
-                for cell in obstacleCells
-                for agent in cell.agents
-                if isinstance(agent, Obstacle)
-            ]
-            # print(f"AGENTS: {agents}")
-
-            obstaclePositions = [
-                {"id": str(a.unique_id), "x": coordinate[0], "y": 1, "z": coordinate[1]}
-                for (coordinate, a) in agents
-            ]
-            # print(f"OBSTACLE POSITIONS: {obstaclePositions}")
-
-            return jsonify({"positions": obstaclePositions})
-        except Exception as e:
-            print(e)
-            return jsonify({"message": "Error with obstacle positions"}), 500
+def get_obstacles():
+    return _respond(lambda: {"positions": _positions_of(Obstacle)})
 
 
-# This route will be used to update the model
+@app.route("/getTrafficLights", methods=["GET"])
+def get_traffic_lights():
+    return _respond(
+        lambda: {"positions": _positions_of(Traffic_Light, lambda t: {"state": t.state})}
+    )
+
+
+@app.route("/getRoads", methods=["GET"])
+def get_roads():
+    return _respond(
+        lambda: {"positions": _positions_of(Road, lambda r: {"direction": r.direction})}
+    )
+
+
+@app.route("/getDestinations", methods=["GET"])
+def get_destinations():
+    return _respond(lambda: {"positions": _positions_of(Destination)})
+
+
+@app.route("/getStatus", methods=["GET"])
+def get_status():
+    return _respond(lambda: _require_model().stats())
+
+
 @app.route("/update", methods=["GET"])
-@cross_origin()
-def updateModel():
-    global currentStep, cityModel
-    if request.method == "GET":
-        try:
-            # Update the model and return a message to WebGL saying that the model was updated successfully
-            cityModel.step()
-            currentStep += 1
-            return jsonify(
-                {
-                    "message": f"Model updated to step {currentStep}.",
-                    "currentStep": currentStep,
-                }
-            )
-        except Exception as e:
-            print(e)
-            return jsonify({"message": "Error during step."}), 500
+def update_model():
+    def advance() -> dict:
+        model = _require_model()
+        if model.running:
+            model.step()
+        return {"message": f"Model at step {model.steps}.", "currentStep": model.steps,
+                "running": model.running}
+
+    return _respond(advance)
 
 
 if __name__ == "__main__":
-    # Run the flask server in port 8585
+    logging.basicConfig(level=logging.INFO)
     host = os.environ.get("FLASK_HOST", "localhost")
     port = int(os.environ.get("FLASK_PORT", "8585"))
     debug = os.environ.get("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
