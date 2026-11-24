@@ -12,7 +12,7 @@
  */
 
 import { V3, M4, type Vec3, type Mat4 } from '../libs/3d-lib.js';
-import { VecXYZ } from '../libs/vecXYZ.js';
+import { type VecXYZ } from '../libs/vecXYZ.js';
 
 export class Camera3D {
     id: number;

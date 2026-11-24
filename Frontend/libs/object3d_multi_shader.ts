@@ -11,7 +11,7 @@
 import * as twgl from 'twgl-base.js';
 import { V3 } from '../libs/3d-lib.js';
 import { type Color } from '../libs/color.js';
-import { ObjectTransforms } from '../libs/vecXYZ.js';
+import { type ObjectTransforms } from '../libs/vecXYZ.js';
 
 export function createDefaultTransforms(): ObjectTransforms {
     return {
@@ -48,7 +48,11 @@ export class GeometryTemplate {
         this.programInfo = programInfo;
         this.arrays = arrays;
         this.bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays);
-        this.vao = twgl.createVAOFromBufferInfo(gl, programInfo, this.bufferInfo);
+        const vao = twgl.createVAOFromBufferInfo(gl, programInfo, this.bufferInfo);
+        if (!vao) {
+            throw new Error('Could not create a vertex array object for this geometry.');
+        }
+        this.vao = vao;
     }
 }
 

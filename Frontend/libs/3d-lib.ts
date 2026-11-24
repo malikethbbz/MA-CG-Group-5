@@ -25,46 +25,61 @@ export class V3 {
         return v;
     }
 
-    // TODO: Complete the following methods
-
     static length(v: Vec3): number {
-        return 0;
+        return Math.sqrt(v[X] * v[X] + v[Y] * v[Y] + v[Z] * v[Z]);
     }
 
+    // A zero-length vector stays zero instead of becoming NaN
     static normalize(v: Vec3, dest?: Vec3): Vec3 {
         dest = dest || new Float32Array(3);
-
+        const len = V3.length(v);
+        const inv = len > 0 ? 1 / len : 0;
+        dest[X] = v[X] * inv;
+        dest[Y] = v[Y] * inv;
+        dest[Z] = v[Z] * inv;
         return dest;
     }
 
     static dot(u: Vec3, v: Vec3): number {
-        return 0;
+        return u[X] * v[X] + u[Y] * v[Y] + u[Z] * v[Z];
     }
 
     static cross(u: Vec3, v: Vec3, dest?: Vec3): Vec3 {
         dest = dest || new Float32Array(3);
-
+        // Read everything first so dest may alias u or v
+        const x = u[Y] * v[Z] - u[Z] * v[Y];
+        const y = u[Z] * v[X] - u[X] * v[Z];
+        const z = u[X] * v[Y] - u[Y] * v[X];
+        dest[X] = x;
+        dest[Y] = y;
+        dest[Z] = z;
         return dest;
     }
 
     // Add two vectors
     static add(u: Vec3, v: Vec3, dest?: Vec3): Vec3 {
         dest = dest || new Float32Array(3);
-
+        dest[X] = u[X] + v[X];
+        dest[Y] = u[Y] + v[Y];
+        dest[Z] = u[Z] + v[Z];
         return dest;
     }
 
     // Subtract two vectors
     static subtract(u: Vec3, v: Vec3, dest?: Vec3): Vec3 {
         dest = dest || new Float32Array(3);
-
+        dest[X] = u[X] - v[X];
+        dest[Y] = u[Y] - v[Y];
+        dest[Z] = u[Z] - v[Z];
         return dest;
     }
 
     // Multiply a vector by a scalar value
     static scale(u: Vec3, s: number, dest?: Vec3): Vec3 {
         dest = dest || new Float32Array(3);
-
+        dest[X] = u[X] * s;
+        dest[Y] = u[Y] * s;
+        dest[Z] = u[Z] * s;
         return dest;
     }
 }
@@ -89,82 +104,58 @@ export class M4 {
     a30 a31 a32 a33           b30 b31 b32 b33
     */
     static multiply(a: Mat4, b: Mat4): Mat4 {
-        // Get the elements in the matrix
-        const a00 = a[0 * 4 + 0];
-        const a01 = a[0 * 4 + 1];
-        const a02 = a[0 * 4 + 2];
-        const a03 = a[0 * 4 + 3];
-        const a10 = a[1 * 4 + 0];
-        const a11 = a[1 * 4 + 1];
-        const a12 = a[1 * 4 + 2];
-        const a13 = a[1 * 4 + 3];
-        const a20 = a[2 * 4 + 0];
-        const a21 = a[2 * 4 + 1];
-        const a22 = a[2 * 4 + 2];
-        const a23 = a[2 * 4 + 3];
-        const a30 = a[3 * 4 + 0];
-        const a31 = a[3 * 4 + 1];
-        const a32 = a[3 * 4 + 2];
-        const a33 = a[3 * 4 + 3];
-
-        const b00 = b[0 * 4 + 0];
-        const b01 = b[0 * 4 + 1];
-        const b02 = b[0 * 4 + 2];
-        const b03 = b[0 * 4 + 3];
-        const b10 = b[1 * 4 + 0];
-        const b11 = b[1 * 4 + 1];
-        const b12 = b[1 * 4 + 2];
-        const b13 = b[1 * 4 + 3];
-        const b20 = b[2 * 4 + 0];
-        const b21 = b[2 * 4 + 1];
-        const b22 = b[2 * 4 + 2];
-        const b23 = b[2 * 4 + 3];
-        const b30 = b[3 * 4 + 0];
-        const b31 = b[3 * 4 + 1];
-        const b32 = b[3 * 4 + 2];
-        const b33 = b[3 * 4 + 3];
-
-        // The matrices are oriented transposed,
-        // so the multiplication must be adjusted accordingly
-        return new Float32Array([
-            1,  0,  0,  0,
-            0,  1,  0,  0,
-            0,  0,  1,  0,
-            0,  0,  0,  1
-        ]);
+        // Element (row r, column c) of a * b is stored at index c * 4 + r.
+        // Returns the product a * b, so multiply(T, R) rotates first and then translates.
+        const dst = new Float32Array(16);
+        for (let c = 0; c < 4; c++) {
+            for (let r = 0; r < 4; r++) {
+                let sum = 0;
+                for (let k = 0; k < 4; k++) {
+                    sum += a[k * 4 + r] * b[c * 4 + k];
+                }
+                dst[c * 4 + r] = sum;
+            }
+        }
+        return dst;
     }
 
     static translation(v: Vec3): Mat4 {
         return new Float32Array([
-             1,  0,  0,  0,
-             0,  1,  0,  0,
-             0,  0,  1,  0,
-             0,  0,  0,  1
+             1,    0,    0,    0,
+             0,    1,    0,    0,
+             0,    0,    1,    0,
+             v[X], v[Y], v[Z], 1
         ]);
     }
 
     static rotationX(angleRadians: number): Mat4 {
+        const c = Math.cos(angleRadians);
+        const s = Math.sin(angleRadians);
         return new Float32Array([
              1,  0,  0,  0,
-             0,  1,  0,  0,
-             0,  0,  1,  0,
+             0,  c,  s,  0,
+             0, -s,  c,  0,
              0,  0,  0,  1
         ]);
     }
 
     static rotationY(angleRadians: number): Mat4 {
+        const c = Math.cos(angleRadians);
+        const s = Math.sin(angleRadians);
         return new Float32Array([
-             1,  0,  0,  0,
+             c,  0, -s,  0,
              0,  1,  0,  0,
-             0,  0,  1,  0,
+             s,  0,  c,  0,
              0,  0,  0,  1
         ]);
     }
 
     static rotationZ(angleRadians: number): Mat4 {
+        const c = Math.cos(angleRadians);
+        const s = Math.sin(angleRadians);
         return new Float32Array([
-             1,  0,  0,  0,
-             0,  1,  0,  0,
+             c,  s,  0,  0,
+            -s,  c,  0,  0,
              0,  0,  1,  0,
              0,  0,  0,  1
         ]);
@@ -172,11 +163,22 @@ export class M4 {
 
     static scale(v: Vec3): Mat4 {
         return new Float32Array([
-             1,  0,  0,  0,
-             0,  1,  0,  0,
-             0,  0,  1,  0,
-             0,  0,  0,  1
+             v[X], 0,    0,    0,
+             0,    v[Y], 0,    0,
+             0,    0,    v[Z], 0,
+             0,    0,    0,    1
         ]);
+    }
+
+    // Applies m to the point p (w = 1), so translations are included
+    static transformPoint(m: Mat4, p: Vec3): Vec3 {
+        const x = p[X], y = p[Y], z = p[Z];
+        const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+        return V3.create(
+            (m[0] * x + m[4] * y + m[8]  * z + m[12]) / w,
+            (m[1] * x + m[5] * y + m[9]  * z + m[13]) / w,
+            (m[2] * x + m[6] * y + m[10] * z + m[14]) / w,
+        );
     }
 
     /**
