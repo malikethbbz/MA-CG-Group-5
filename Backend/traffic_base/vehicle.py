@@ -4,7 +4,7 @@
 it sees an id, moves it while the id keeps appearing, and deletes it once it is gone.
 """
 
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 class Heading(TypedDict):
@@ -26,10 +26,13 @@ class VehicleFrame(TypedDict):
 
 
 class Event(TypedDict):
-    """Something the frontend may want to show once, e.g. a car arriving."""
+    """Something the frontend may want to show once, e.g. a car arriving. Emergency
+    and ambulance events also carry the grid cell they happened at as (x, z)."""
 
     type: str
     id: str
+    x: NotRequired[int]
+    z: NotRequired[int]
 
 
 @runtime_checkable
