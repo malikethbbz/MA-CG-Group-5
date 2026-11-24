@@ -1,0 +1,18 @@
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W", "B", "I", "N", "UP", "SIM", "C90", "ANN"]
+ignore = [
+    "N801",  # Traffic_Light keeps the course's class name
+    "SIM114",  # Car.step keeps one branch per behavior rule, even when two both wait
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["ANN401"]
+
+[lint.isort]
+known-first-party = ["traffic_base", "city_server", "conftest"]
+
+[lint.mccabe]
+max-complexity = 10

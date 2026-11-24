@@ -52,6 +52,14 @@ pip install -r requirements.txt
 python city_server.py            # http://localhost:8585
 ```
 
+Tests:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+ruff check . && ruff format --check .
+```
+
 ### Frontend
 
 Requires Node 20.19+ or 22.12+ (Vite 8).
@@ -69,9 +77,41 @@ From `Backend/city_files/mapDictionary.json`:
 | Symbol | Meaning |
 |--------|---------|
 | `>` `<` `^` `v` | Road and its direction |
-| `S` `s` | Traffic light (15 and 7 step timings) |
+| `S` `s` | Traffic light (green for 15 and 7 steps) |
 | `#` | Obstacle / building |
 | `D` | Destination |
+
+The two light groups share a 22-step cycle: `s` lights are green for the first 7 steps,
+then `S` lights for the next 15, so crossing streets are never green at the same time.
+
+## Server API
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/init` | GET, POST | Creates the model. POST body: `{"map": "2025_base.txt", "seed": 42}` (both optional) |
+| `/update` | GET | Advances one step while the simulation is running |
+| `/getAgents` | GET | Cars: `id`, `x`, `y`, `z`, `heading` |
+| `/getTrafficLights` | GET | Lights: position and `state` (`true` = green) |
+| `/getObstacles` | GET | Building positions |
+| `/getRoads` | GET | Road positions and `direction` |
+| `/getDestinations` | GET | Destination positions |
+| `/getStatus` | GET | Step, `running`, `stopReason`, spawned / arrived / active cars, average trip and wait steps (`null` until a car arrives) |
+
+Grid `(x, y)` maps to world `(x, z)`; `y` is the height in the 3D scene. Calls made
+before `/init` return `409`.
+
+## Agent Design
+
+Each car runs the first behavior whose condition holds, from highest to lowest priority:
+
+1. No route available: wait
+2. Red light on the next cell: stop
+3. Car on the next cell: wait; every `PATIENCE` blocked steps (3), look for a route around it
+4. Otherwise: drive one cell along the A* route
+
+Routes come from a directed street graph built from the map (`traffic_base/city_graph.py`).
+A move is legal when it never goes against the direction of the current or the next cell,
+which allows driving forward, changing lanes and crossing intersections.
 
 ## Roadmap
 
