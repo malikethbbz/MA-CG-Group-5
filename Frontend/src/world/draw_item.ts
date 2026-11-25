@@ -4,6 +4,7 @@
 
 import { M4, type Mat4 } from '../../libs/3d-lib';
 import type { Color } from '../../libs/color';
+import type { RoadMarking } from './road_markings';
 
 export type ShapeName = 'box' | 'wheel';
 
@@ -17,6 +18,10 @@ export interface DrawItem {
     readonly emissive: number;
     // Set on buildings: lit window strips on the sides, varied by this seed
     readonly windowSeed?: number;
+    // Set on road tiles: the lane paint drawn on top
+    readonly marking?: RoadMarking;
+    // Set on items placed on the roundabout's circle already, so the warp skips them
+    readonly unwarped?: boolean;
 }
 
 export function normalMatrix(world: Mat4): Mat4 {

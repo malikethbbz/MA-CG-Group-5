@@ -1,6 +1,7 @@
 /*
- * Turns /city into static draw items, built once: ground, roads, buildings, street
- * lamps. Traffic-light lamps are kept apart because their color changes every /step.
+ * Turns /city into static draw items, built once: ground, painted roads, buildings,
+ * street lamps, and the roundabout's plaza. Traffic-light lamps are kept apart because
+ * their color changes every /step.
  */
 
 import type { Mat4 } from '../../libs/3d-lib';
@@ -9,8 +10,10 @@ import type { CityData, Direction, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
 import { cellBox } from './cell_box';
 import { drawItem, normalMatrix, type DrawItem } from './draw_item';
+import { findGlorieta, type Glorieta } from './glorieta';
 import { PALETTE, scaleColor } from './palette';
 import { landmarkItems } from './landmarks';
+import { roadMarkings, type RoadMarking } from './road_markings';
 import { BUILDING_WIDTH, sidewalkItem, sidewalks, type Sidewalk } from './sidewalks';
 import { streetLampItems, streetLamps } from './street_lamps';
 
@@ -26,6 +29,11 @@ const POLE_SIDE_OFFSET = 0.42;
 const CROWN_SHARE = 0.3;
 const CROWN_DROP = 0.1;
 const CROWN_HEIGHT = 0.05;
+const PLAZA_HEIGHT = 0.03;
+const CURB_HEIGHT = 0.06;
+const CURB_WIDTH = 0.08;
+// Each curb edge is cut into this many pieces, so the warp bends it into a smooth arc
+const CURB_PIECES = 4;
 
 export interface LightLamp {
     readonly id: string;
@@ -41,6 +49,8 @@ export interface CityLayout {
     // World-space centre of the map, for framing the camera
     readonly center: readonly [number, number, number];
     readonly extent: number;
+    // The Reforma roundabout, which the renderer draws round; null on other maps
+    readonly glorieta: Glorieta | null;
 }
 
 const DIRECTION_VECTORS: Readonly<Record<Direction, readonly [number, number]>> = {
@@ -69,8 +79,33 @@ function ground(city: CityData): DrawItem {
     return drawItem('box', world, PALETTE.ground);
 }
 
-function roadTile(cell: GridCell): DrawItem {
-    return drawItem('box', cellBox(cell, -ROAD_THICKNESS * CELL_SIZE, [0.98, ROAD_THICKNESS, 0.98]), PALETTE.road);
+function roadTile(cell: GridCell, marking: RoadMarking | undefined): DrawItem {
+    const tile = drawItem('box', cellBox(cell, -ROAD_THICKNESS * CELL_SIZE, [0.98, ROAD_THICKNESS, 0.98]), PALETTE.road);
+    return marking === undefined ? tile : { ...tile, marking };
+}
+
+// The island inside the ring: a garden floor ringed by a neon curb. Tiles fill their
+// cells so the warp closes them into one disk.
+function plazaItems(g: Glorieta): DrawItem[] {
+    const cells = [...g.plaza].map((id) => id.split(',').map(Number) as [number, number]);
+    const items = cells.map(([x, z]) => drawItem('box', cellBox({ x, z }, 0, [1, PLAZA_HEIGHT, 1]), PALETTE.plaza));
+    for (const [x, z] of cells) {
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            if (g.plaza.has(`${x + dx},${z + dz}`)) {
+                continue;
+            }
+            for (let i = 0; i < CURB_PIECES; i++) {
+                const along = (i + 0.5) / CURB_PIECES - 0.5;
+                const edge = 0.5 - 0.5 * CURB_WIDTH;
+                const shift: [number, number] = [dx * edge + dz * along, dz * edge + dx * along];
+                const size: [number, number, number] = [
+                    dx === 0 ? 1 / CURB_PIECES : CURB_WIDTH, CURB_HEIGHT, dz === 0 ? 1 / CURB_PIECES : CURB_WIDTH,
+                ];
+                items.push(drawItem('box', cellBox({ x, z }, 0, size, shift), PALETTE.plazaCurb, 1));
+            }
+        }
+    }
+    return items;
 }
 
 // A neon band just under the roof line on some buildings: from above it is only a
@@ -111,24 +146,30 @@ function poleShift(direction: Direction): [number, number] {
 export function buildCityLayout(city: CityData): CityLayout {
     const statics: DrawItem[] = [ground(city)];
     const lamps: LightLamp[] = [];
+    const markings = roadMarkings(city);
+    const glorieta = findGlorieta(city);
     for (const road of city.roads) {
-        statics.push(roadTile(road));
+        statics.push(roadTile(road, markings.get(`${road.x},${road.z}`)));
     }
     for (const light of city.lights) {
         const shift = poleShift(light.direction);
-        statics.push(roadTile(light));
+        statics.push(roadTile(light, markings.get(`${light.x},${light.z}`)));
         statics.push(drawItem('box', cellBox(light, 0, [0.05, POLE_HEIGHT, 0.05], shift), PALETTE.lightPole));
         const world = cellBox(light, POLE_HEIGHT * CELL_SIZE, [LAMP_SIZE, LAMP_SIZE * 1.6, LAMP_SIZE], shift);
         lamps.push({ id: light.id, world, normal: normalMatrix(world) });
     }
-    // A landmark stands on its own island; no tower is generated on that cell
-    const landmarkCells = new Set(city.landmarks.map((l) => `${l.x},${l.z}`));
+    // A landmark stands on its own island; no tower is generated there
+    const open = new Set([...city.landmarks.map((l) => `${l.x},${l.z}`), ...(glorieta?.plaza ?? [])]);
     for (const obstacle of city.obstacles) {
-        if (!landmarkCells.has(`${obstacle.x},${obstacle.z}`)) {
+        if (!open.has(`${obstacle.x},${obstacle.z}`)) {
             statics.push(...building(obstacle));
         }
     }
-    statics.push(...landmarkItems(city.landmarks));
+    if (glorieta !== null) {
+        statics.push(...plazaItems(glorieta));
+    }
+    // The monument stands at the circle's centre, which the warp leaves in place
+    statics.push(...landmarkItems(city.landmarks).map((item) => ({ ...item, unwarped: true })));
     for (const target of city.destinations) {
         statics.push(...destination(target));
     }
@@ -143,5 +184,6 @@ export function buildCityLayout(city: CityData): CityLayout {
         walks,
         center: [((city.width - 1) / 2) * CELL_SIZE, 0, ((city.height - 1) / 2) * CELL_SIZE],
         extent: Math.max(city.width, city.height) * CELL_SIZE,
+        glorieta,
     };
 }

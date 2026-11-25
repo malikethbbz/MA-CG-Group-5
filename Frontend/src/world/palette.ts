@@ -27,6 +27,11 @@ export const PALETTE = {
     lampCyan: hex('#3ff0ff'),
     monumentStone: hex('#cfc6ee'),
     monumentGold: hex('#ffc23d'),
+    plaza: hex('#173a4a'),
+    plazaCurb: hex('#ff3fb4'),
+    // Lane paint: white lines and arrows, an amber divider between opposite ways
+    paint: hex('#e8e6ff'),
+    divider: hex('#ffb13d'),
     lightGreen: hex('#39ff6a'),
     lightRed: hex('#ff2a4d'),
     wheel: hex('#d8d8e8'),

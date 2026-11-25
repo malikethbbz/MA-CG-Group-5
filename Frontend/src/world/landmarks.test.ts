@@ -52,9 +52,12 @@ describe('landmarks in the city layout', () => {
     };
     const towers = (c: CityData) => buildCityLayout(c).statics.filter((item) => item.windowSeed !== undefined);
 
-    it('draws the monument instead of a tower on its cell', () => {
-        expect(towers(city)).toHaveLength(1);
+    it('draws the monument and its plaza instead of towers on its island', () => {
+        // (1, 0) touches the monument, so it is part of the island's plaza
+        expect(towers(city)).toHaveLength(0);
         expect(towers({ ...city, landmarks: [] })).toHaveLength(2);
+        const plaza = buildCityLayout(city).statics.filter((item) => item.color === PALETTE.plaza);
+        expect(plaza).toHaveLength(2);
         const gold = buildCityLayout(city).statics.filter((item) => item.color === PALETTE.monumentGold);
         expect(gold.length).toBeGreaterThan(0);
     });

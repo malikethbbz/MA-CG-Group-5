@@ -23,6 +23,16 @@ uniform float u_windowSeed;
 uniform vec3 u_windowColor;
 uniform vec3 u_windowAltColor;
 
+// Road paint on the top of a road tile, in the tile's frame (see road_markings.ts)
+uniform float u_marking;
+uniform vec2 u_markAhead;
+uniform vec2 u_markEdges;
+uniform float u_markArrow;
+uniform float u_markStop;
+uniform float u_markPhase;
+uniform vec3 u_paintColor;
+uniform vec3 u_dividerColor;
+
 // Distance fog toward the horizon haze
 uniform vec3 u_cameraPosition;
 uniform vec3 u_fogColor;
@@ -63,11 +73,61 @@ float windowLight(out float alt) {
     return inBand * inColumn * step(LIT_SHARE_CUTOFF, pick) * (0.7 + 0.3 * fract(pick * 13.0));
 }
 
+// Matches EDGE_* in road_markings.ts
+const float EDGE_DASHED = 1.0;
+const float EDGE_DIVIDER = 2.0;
+const float EDGE_CURB = 3.0;
+const float LINE_HALF = 0.025;
+
+// Paint on one lane edge; `fromEdge` is the distance in from that side of the tile.
+float edgePaint(float kind, float fromEdge, float ahead, out float divider) {
+    divider = 0.0;
+    if (kind == EDGE_DASHED) {
+        float dash = step(fract(ahead + u_markPhase), 0.5);
+        return dash * step(fromEdge, LINE_HALF);
+    }
+    if (kind == EDGE_DIVIDER) {
+        divider = 1.0;
+        return step(fromEdge, 1.5 * LINE_HALF);
+    }
+    if (kind == EDGE_CURB) {
+        return step(0.04, fromEdge) * step(fromEdge, 0.04 + 2.0 * LINE_HALF);
+    }
+    return 0.0;
+}
+
+// 0 for bare road; otherwise paint strength, and whether it is the divider color
+float roadPaint(out float divider) {
+    divider = 0.0;
+    if (u_marking < 0.5 || v_localNormal.y < 0.5) {
+        return 0.0;
+    }
+    vec2 uv = v_localPosition.xz;
+    vec2 perp = vec2(u_markAhead.y, -u_markAhead.x);
+    float ahead = dot(uv, u_markAhead);
+    float side = dot(uv, perp);
+    float d0;
+    float d1;
+    float paint = max(edgePaint(u_markEdges.x, 0.5 - side, ahead, d0), edgePaint(u_markEdges.y, 0.5 + side, ahead, d1));
+    divider = max(d0, d1);
+    float stopLine = u_markStop * step(0.34, ahead) * step(ahead, 0.44) * step(abs(side), 0.4);
+    float shaft = step(-0.3, ahead) * step(ahead, 0.08) * step(abs(side), 0.035);
+    float head = step(0.08, ahead) * step(ahead, 0.3) * step(abs(side), 0.8 * (0.3 - ahead));
+    float arrow = u_markArrow * max(shaft, head);
+    float shapes = max(stopLine, arrow);
+    divider *= 1.0 - shapes;
+    return max(paint, shapes);
+}
+
 void main() {
     vec3 base = u_color.rgb * v_color.rgb;
+    float divider;
+    float paint = roadPaint(divider);
+    base = mix(base, mix(u_paintColor, u_dividerColor, divider), paint);
     float diffuse = max(dot(normalize(v_normal), normalize(-u_lightDirection)), 0.0);
     vec3 lit = base * (u_ambientColor.rgb + diffuse * u_lightColor);
-    vec3 color = mix(lit, base, u_emissive);
+    // Paint is retroreflective: it stays readable under the night sky
+    vec3 color = mix(lit, base, max(u_emissive, 0.7 * paint));
 
     float alt;
     float window = windowLight(alt);

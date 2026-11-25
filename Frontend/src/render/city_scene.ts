@@ -11,6 +11,8 @@ import { CELL_SIZE } from '../config';
 import { buildCityLayout, type CityLayout } from '../world/city_layout';
 import type { DrawItem } from '../world/draw_item';
 import { frameAlpha } from '../world/interpolation';
+import { glorietaUniforms } from '../world/glorieta';
+import { markingUniforms } from '../world/road_markings';
 import { lampColor, PALETTE, SKY } from '../world/palette';
 import { PedestrianCrowd } from '../world/pedestrian_crowd';
 import { spawnWalkers } from '../world/pedestrians';
@@ -121,6 +123,9 @@ export class CityScene extends Scene {
             u_viewProjection: viewProjection,
             u_windowColor: PALETTE.windowCyan.slice(0, 3),
             u_windowAltColor: PALETTE.windowPink.slice(0, 3),
+            u_paintColor: PALETTE.paint.slice(0, 3),
+            u_dividerColor: PALETTE.divider.slice(0, 3),
+            ...glorietaUniforms(this.layout.glorieta),
             ...fogUniforms(this.view.posArray, this.view.distance, this.layout.extent),
         });
 
@@ -161,6 +166,8 @@ export class CityScene extends Scene {
             u_emissive: item.emissive,
             u_windows: item.windowSeed === undefined ? 0 : 1,
             u_windowSeed: item.windowSeed ?? 0,
+            u_warp: item.unwarped === true ? 0 : 1,
+            ...markingUniforms(item.marking),
         });
     }
 }

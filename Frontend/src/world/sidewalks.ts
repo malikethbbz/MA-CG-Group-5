@@ -8,6 +8,7 @@ import type { CityData, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
 import { cellBox } from './cell_box';
 import { drawItem, type DrawItem } from './draw_item';
+import { findGlorieta } from './glorieta';
 import { PALETTE } from './palette';
 
 // Building footprint, in cells; the rest of the cell is sidewalk
@@ -30,12 +31,15 @@ const SIDES: readonly Side[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const key = (x: number, z: number): string => `${x},${z}`;
 
 // Only plain road cells count: traffic-light cells are listed apart in /city and keep
-// their own pole. Landmark islands get no sidewalk furniture.
+// their own pole. Landmarks and the roundabout's plaza get no sidewalk furniture.
 export function sidewalks(city: CityData): Sidewalk[] {
     const roads = new Set(city.roads.map((road) => key(road.x, road.z)));
-    const landmarks = new Set(city.landmarks.map((landmark) => key(landmark.x, landmark.z)));
+    const skipped = new Set([
+        ...city.landmarks.map((landmark) => key(landmark.x, landmark.z)),
+        ...(findGlorieta(city)?.plaza ?? []),
+    ]);
     const cells = [...city.obstacles]
-        .filter((cell) => !landmarks.has(key(cell.x, cell.z)))
+        .filter((cell) => !skipped.has(key(cell.x, cell.z)))
         .sort((a, b) => a.x - b.x || a.z - b.z);
     return cells.flatMap((cell) => SIDES
         .filter((side) => roads.has(key(cell.x + side[0], cell.z + side[1])))
