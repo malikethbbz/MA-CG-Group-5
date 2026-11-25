@@ -1,7 +1,8 @@
 /*
  * The Reforma roundabout drawn round. The server drives a square ring of grid cells
  * around the monument's island; the vertex shader bends that square onto a circle, so
- * roads, cars and buildings near it all curve the same way and stay joined.
+ * roads and buildings near it curve the same way and stay joined. Vehicles are rigid:
+ * warpPose() moves each one whole onto the bent road instead (see below).
  *
  * warpPoint() is the reference for the GLSL warp in vs_flat.glsl, which mirrors it
  * line for line. Every distance here is in cells.
