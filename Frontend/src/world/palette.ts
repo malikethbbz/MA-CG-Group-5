@@ -22,6 +22,8 @@ export const PALETTE = {
     windowPink: hex('#ff8ad8'),
     destination: hex('#ff2bd6'),
     lightPole: hex('#3a3950'),
+    lampPink: hex('#ff4fc8'),
+    lampCyan: hex('#3ff0ff'),
     lightGreen: hex('#39ff6a'),
     lightRed: hex('#ff2a4d'),
     wheel: hex('#d8d8e8'),
