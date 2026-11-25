@@ -4,7 +4,7 @@
  */
 
 import type {
-    CityData, Direction, GridCell, Heading, LightCell, LightState, RoadCell,
+    CityData, Direction, GridCell, Heading, Landmark, LandmarkKind, LightCell, LightState, RoadCell,
     Stats, StepEvent, StepFrame, VehicleFrame,
 } from './contract';
 
@@ -89,6 +89,27 @@ function lightCell(v: unknown, path: string): LightCell {
     return { ...cell(o, path), id: str(o, 'id', path), direction: direction(o, path) };
 }
 
+const LANDMARK_KINDS: readonly LandmarkKind[] = ['monument'];
+
+// A landmark kind this client does not know yet is skipped, not an error, so a newer
+// server still renders; the warning says what was left out.
+function landmarks(o: Json, path: string): Landmark[] {
+    if (o.landmarks === undefined) {
+        return [];
+    }
+    const parsed = list(o, 'landmarks', path, (v, p) => {
+        const item = object(v, p);
+        return { ...cell(item, p), kind: str(item, 'kind', p) };
+    });
+    return parsed.filter((landmark): landmark is Landmark => {
+        const known = LANDMARK_KINDS.includes(landmark.kind as LandmarkKind);
+        if (!known) {
+            console.warn(`Skipping landmark of unknown kind "${landmark.kind}" at (${landmark.x}, ${landmark.z}).`);
+        }
+        return known;
+    });
+}
+
 export function parseCity(value: unknown): CityData {
     const path = 'city';
     const o = object(value, path);
@@ -100,6 +121,7 @@ export function parseCity(value: unknown): CityData {
         destinations: list(o, 'destinations', path, cell),
         lights: list(o, 'lights', path, lightCell),
         helipads: list(o, 'helipads', path, cell),
+        landmarks: landmarks(o, path),
     };
 }
 

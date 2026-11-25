@@ -1,5 +1,5 @@
 /*
- * Vertex data for the two meshes the city is drawn with. Both carry a vertex color
+ * Vertex data for the meshes the city is drawn with. The box and wheel carry a vertex color
  * that the shader multiplies by the per-object color.
  */
 
@@ -64,5 +64,12 @@ export function wheelArrays(): twgl.Arrays {
         a_normal: { numComponents: 3, data: normal },
         a_color: { numComponents: 4, data: color },
         indices: { numComponents: 3, data: indices },
+    };
+}
+
+// One clip-space triangle that covers the whole viewport, for the sky pass.
+export function screenTriangleArrays(): twgl.Arrays {
+    return {
+        a_position: { numComponents: 2, data: [-1, -1, 3, -1, -1, 3] },
     };
 }

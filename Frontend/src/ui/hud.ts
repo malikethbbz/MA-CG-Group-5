@@ -7,7 +7,8 @@ import type { Stats } from '../api/contract';
 export type StatusTone = 'info' | 'error' | 'done';
 
 export interface Hud {
-    showStatus(message: string, tone: StatusTone): void;
+    // holdMs keeps the message up even if clearStatus is called sooner
+    showStatus(message: string, tone: StatusTone, holdMs?: number): void;
     clearStatus(): void;
     showStats(stats: Stats): void;
 }
@@ -38,14 +39,18 @@ export function statsRows(stats: Stats): [string, string][] {
 export function createHud(): Hud {
     const status = element('status');
     const stats = element('stats');
+    let holdUntil = 0;
     return {
-        showStatus(message, tone) {
+        showStatus(message, tone, holdMs = 0) {
             status.textContent = message;
             status.dataset.tone = tone;
             status.hidden = false;
+            holdUntil = performance.now() + holdMs;
         },
         clearStatus() {
-            status.hidden = true;
+            if (performance.now() >= holdUntil) {
+                status.hidden = true;
+            }
         },
         showStats(current) {
             const rows = statsRows(current).map(([label, value]) => {

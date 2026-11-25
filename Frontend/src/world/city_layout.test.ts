@@ -10,7 +10,7 @@ const CITY: CityData = {
     obstacles: [{ x: 2, z: 2 }, { x: 3, z: 2 }],
     destinations: [{ x: 0, z: 2 }],
     lights: [{ id: '12', x: 2, z: 0, direction: 'Right' }],
-    helipads: [],
+    helipads: [], landmarks: [],
 };
 
 describe('buildCityLayout', () => {
@@ -58,7 +58,7 @@ describe('palette lookups', () => {
     });
 
     it('colors known kinds distinctly and falls back for unknown ones', () => {
-        const kinds = ['car', 'ambulance', 'police', 'rogue', 'swat'];
+        const kinds = ['car', 'motorcycle', 'ambulance', 'police', 'rogue', 'swat'];
         const colors = new Set(kinds.map((kind) => vehicleColor(kind).join()));
         expect(colors.size).toBe(kinds.length);
         expect(vehicleColor('hovercraft')).toBe(PALETTE.unknownVehicle);

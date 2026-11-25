@@ -37,8 +37,15 @@ export function startPolling(options: PollerOptions): Poller {
         let frame: StepFrame;
         try {
             frame = await options.fetchStep();
+            // A response that lands after stop() belongs to a run that was replaced
+            if (stopped) {
+                return;
+            }
             options.onFrame(frame);
         } catch (error) {
+            if (stopped) {
+                return;
+            }
             options.onError(error);
             schedule(tick, options.retryDelayMs);
             return;

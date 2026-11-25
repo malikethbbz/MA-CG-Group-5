@@ -19,6 +19,13 @@ export interface LightCell extends GridCell {
     direction: Direction;
 }
 
+// Kinds of landmark this client can draw; others are skipped while parsing.
+export type LandmarkKind = 'monument';
+
+export interface Landmark extends GridCell {
+    kind: LandmarkKind;
+}
+
 // GET /city
 export interface CityData {
     width: number;
@@ -28,6 +35,8 @@ export interface CityData {
     destinations: GridCell[];
     lights: LightCell[];
     helipads: GridCell[];
+    // Optional in the payload; absent means none
+    landmarks: Landmark[];
 }
 
 export interface Heading {
@@ -35,7 +44,7 @@ export interface Heading {
     z: number;
 }
 
-// `kind` is "car" today; "ambulance", "police", "rogue" and "swat" come later.
+// `kind` is "car", "motorcycle" or "ambulance"; "police", "rogue" and "swat" come later.
 export interface VehicleFrame {
     id: string;
     kind: string;
