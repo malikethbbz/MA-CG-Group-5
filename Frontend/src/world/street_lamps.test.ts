@@ -19,7 +19,7 @@ function ringCity(): CityData {
         }
     }
     return {
-        width: 9, height: 9, roads, obstacles, destinations: [], helipads: [],
+        width: 9, height: 9, roads, obstacles, destinations: [], helipads: [], landmarks: [],
         lights: [{ id: 'L', x: 5, z: 0, direction: 'Right' }],
     };
 }

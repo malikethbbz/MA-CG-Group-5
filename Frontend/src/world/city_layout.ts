@@ -10,6 +10,7 @@ import { CELL_SIZE } from '../config';
 import { cellBox } from './cell_box';
 import { drawItem, normalMatrix, type DrawItem } from './draw_item';
 import { PALETTE, scaleColor } from './palette';
+import { landmarkItems } from './landmarks';
 import { streetLampItems, streetLamps } from './street_lamps';
 
 const ROAD_THICKNESS = 0.04;
@@ -117,9 +118,14 @@ export function buildCityLayout(city: CityData): CityLayout {
         const world = cellBox(light, POLE_HEIGHT * CELL_SIZE, [LAMP_SIZE, LAMP_SIZE * 1.6, LAMP_SIZE], shift);
         lamps.push({ id: light.id, world, normal: normalMatrix(world) });
     }
+    // A landmark stands on its own island; no tower is generated on that cell
+    const landmarkCells = new Set(city.landmarks.map((l) => `${l.x},${l.z}`));
     for (const obstacle of city.obstacles) {
-        statics.push(...building(obstacle));
+        if (!landmarkCells.has(`${obstacle.x},${obstacle.z}`)) {
+            statics.push(...building(obstacle));
+        }
     }
+    statics.push(...landmarkItems(city.landmarks));
     for (const target of city.destinations) {
         statics.push(...destination(target));
     }

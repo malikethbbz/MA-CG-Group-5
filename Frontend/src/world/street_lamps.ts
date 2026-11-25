@@ -44,9 +44,10 @@ function lampSide(cell: GridCell, roads: ReadonlySet<string>): readonly [number,
 
 export function streetLamps(city: CityData): StreetLamp[] {
     const roads = new Set(city.roads.map((road) => key(road.x, road.z)));
+    const landmarks = new Set(city.landmarks.map((landmark) => key(landmark.x, landmark.z)));
     const lamps: StreetLamp[] = [];
     for (const cell of city.obstacles) {
-        if ((cell.x + cell.z) % LAMP_SPACING !== 0) {
+        if ((cell.x + cell.z) % LAMP_SPACING !== 0 || landmarks.has(key(cell.x, cell.z))) {
             continue;
         }
         const side = lampSide(cell, roads);

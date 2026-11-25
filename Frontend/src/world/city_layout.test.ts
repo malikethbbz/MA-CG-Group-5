@@ -10,7 +10,7 @@ const CITY: CityData = {
     obstacles: [{ x: 2, z: 2 }, { x: 3, z: 2 }],
     destinations: [{ x: 0, z: 2 }],
     lights: [{ id: '12', x: 2, z: 0, direction: 'Right' }],
-    helipads: [],
+    helipads: [], landmarks: [],
 };
 
 describe('buildCityLayout', () => {

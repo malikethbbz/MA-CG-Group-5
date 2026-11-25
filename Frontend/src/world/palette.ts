@@ -24,6 +24,8 @@ export const PALETTE = {
     lightPole: hex('#3a3950'),
     lampPink: hex('#ff4fc8'),
     lampCyan: hex('#3ff0ff'),
+    monumentStone: hex('#cfc6ee'),
+    monumentGold: hex('#ffc23d'),
     lightGreen: hex('#39ff6a'),
     lightRed: hex('#ff2a4d'),
     wheel: hex('#d8d8e8'),

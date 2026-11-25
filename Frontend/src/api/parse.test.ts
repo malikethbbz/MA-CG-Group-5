@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseCity, parseStep } from './parse';
 
 // The examples from docs/frame-api.md
@@ -21,13 +21,45 @@ const STEP = {
 };
 
 describe('parseCity', () => {
-    it('accepts the documented example unchanged', () => {
-        expect(parseCity(CITY)).toEqual(CITY);
+    it('accepts the documented example, with no landmarks when the field is absent', () => {
+        expect(parseCity(CITY)).toEqual({ ...CITY, landmarks: [] });
     });
 
     it('rejects an unknown road direction, naming the field', () => {
         const bad = { ...CITY, roads: [{ x: 0, z: 0, direction: 'North' }] };
         expect(() => parseCity(bad)).toThrow('city.roads[0].direction');
+    });
+});
+
+describe('parseCity landmarks', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('reads an empty list as no landmarks', () => {
+        expect(parseCity({ ...CITY, landmarks: [] }).landmarks).toEqual([]);
+    });
+
+    it('keeps a monument with its cell', () => {
+        const city = parseCity({ ...CITY, landmarks: [{ kind: 'monument', x: 17, z: 12 }] });
+        expect(city.landmarks).toEqual([{ kind: 'monument', x: 17, z: 12 }]);
+    });
+
+    it('skips an unknown kind with a warning and keeps the rest', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const city = parseCity({ ...CITY, landmarks: [
+            { kind: 'statue', x: 1, z: 2 },
+            { kind: 'monument', x: 5, z: 6 },
+        ] });
+        expect(city.landmarks).toEqual([{ kind: 'monument', x: 5, z: 6 }]);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('statue');
+    });
+
+    it('still rejects a malformed landmark, naming the field', () => {
+        expect(() => parseCity({ ...CITY, landmarks: [{ kind: 'monument', x: 'a', z: 1 }] }))
+            .toThrow('city.landmarks[0].x');
+        expect(() => parseCity({ ...CITY, landmarks: {} })).toThrow('city.landmarks');
     });
 });
 
