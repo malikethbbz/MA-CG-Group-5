@@ -3,7 +3,7 @@
  * Every failure becomes an ApiError with a message that can be shown on the page.
  */
 
-import { SERVER_URL } from '../config';
+import { SERVER_URL, type SpawnPoints } from '../config';
 import type { CityData, StepFrame } from './contract';
 import { parseCity, parseStep } from './parse';
 
@@ -62,6 +62,7 @@ async function parsed<T>(endpoint: string, parse: (v: unknown) => T, init?: Requ
 // Body of POST /init; anything left out takes the server default (docs/frame-api.md).
 export interface InitOptions {
     spawnInterval?: number;
+    spawnPoints?: SpawnPoints;
 }
 
 // Creates a fresh model on the server with its default map and seed.

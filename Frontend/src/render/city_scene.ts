@@ -4,6 +4,7 @@
  */
 
 import * as twgl from 'twgl-base.js';
+import type GUI from 'lil-gui';
 import { Scene } from '../../libs/scene_multi_shader';
 import type { CityData, LightState } from '../api/contract';
 import { CELL_SIZE } from '../config';
@@ -52,6 +53,7 @@ export class CityScene extends Scene {
     private sirens: SirenMap = EMPTY_SIRENS;
     private lightGreen: ReadonlyMap<string, boolean> = new Map();
     private frameReceivedAt = 0;
+    private gui: GUI | null = null;
 
     constructor(gl: WebGL2RenderingContext, city: CityData, settings: SimSettings, handlers: SceneHandlers) {
         super(gl, {
@@ -82,10 +84,15 @@ export class CityScene extends Scene {
     }
 
     setupUI(): void {
-        createControls(this.settings, {
+        this.gui = createControls(this.settings, {
             ...this.handlers,
             onSoundChange: (enabled) => this.audio.setEnabled(enabled),
         });
+    }
+
+    // Shows settings changed in code (e.g. reverted after the server refused them).
+    refreshControls(): void {
+        this.gui?.controllersRecursive().forEach((controller) => controller.updateDisplay());
     }
 
     protected render(_deltaTime: number): void {

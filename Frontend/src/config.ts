@@ -22,5 +22,13 @@ export const TRAFFIC_LEVELS: Readonly<Record<string, number>> = {
 };
 export const DEFAULT_SPAWN_INTERVAL = 10;
 
+// Where cars enter: the four corners (the assignment's rule) or every border road cell.
+export type SpawnPoints = 'corners' | 'edges';
+export const SPAWN_POINT_CHOICES: Readonly<Record<string, SpawnPoints>> = {
+    'Corners': 'corners',
+    'Whole border': 'edges',
+};
+export const DEFAULT_SPAWN_POINTS: SpawnPoints = 'corners';
+
 // How long to wait before retrying a failed /init, /city or /step request.
 export const RETRY_DELAY_MS = 1500;

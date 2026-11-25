@@ -1,6 +1,6 @@
 /*
  * Entry point: /init -> /city -> poll /step, drawing the city with WebGL.
- * Changing the traffic density re-inits the model and keeps the city on screen.
+ * Changing the traffic or spawn points re-inits the model and keeps the city on screen.
  * Requires Backend/city_server.py running on http://localhost:8585/.
  */
 
@@ -9,7 +9,9 @@ import type { CityData, StepFrame } from './api/contract';
 import { RETRY_DELAY_MS } from './config';
 import { CityScene } from './render/city_scene';
 import { startPolling, type Poller } from './sim/poller';
+import { createRestarter } from './sim/restarter';
 import { retryUntilOk } from './sim/retry';
+import { initOptions, isClientError, type RunOptions } from './sim/run_options';
 import { defaultSettings, type SimSettings } from './ui/controls';
 import { createHud, type Hud } from './ui/hud';
 import { EMPTY_SIRENS, syncSirens, type SirenMap } from './world/siren';
@@ -38,14 +40,15 @@ function retryReporter(hud: Hud): (error: unknown, attempt: number) => void {
     };
 }
 
-function initWith(settings: SimSettings, hud: Hud): Promise<void> {
-    const init = () => initModel({ spawnInterval: settings.spawnInterval });
-    return retryUntilOk(init, retryReporter(hud), RETRY_DELAY_MS);
+// Retries until the server answers; a refusal (4xx) is thrown to the caller.
+function initWith(run: RunOptions, hud: Hud): Promise<void> {
+    const init = () => initModel(initOptions(run));
+    return retryUntilOk(init, retryReporter(hud), RETRY_DELAY_MS, undefined, (error) => !isClientError(error));
 }
 
 async function loadCity(settings: SimSettings, hud: Hud): Promise<CityData> {
     hud.showStatus('Connecting to the simulation server...', 'info');
-    await initWith(settings, hud);
+    await initWith(runOptions(settings), hud);
     return retryUntilOk(fetchCity, retryReporter(hud), RETRY_DELAY_MS);
 }
 
@@ -54,7 +57,7 @@ function finishedMessage(frame: StepFrame): string {
     return `Simulation finished at step ${frame.step}${reason}.`;
 }
 
-// One /step polling run; a traffic change stops it and starts a new one.
+// One /step polling run; a run-option change stops it and starts a new one.
 function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
     let vehicles: VehicleMap = EMPTY_VEHICLES;
     let sirens: SirenMap = EMPTY_SIRENS;
@@ -78,6 +81,13 @@ function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
     });
 }
 
+// How long a refused-setting message stays up, even as frames keep arriving
+const REFUSED_NOTICE_MS = 6000;
+
+function runOptions(settings: SimSettings): RunOptions {
+    return { spawnInterval: settings.spawnInterval, spawnPoints: settings.spawnPoints };
+}
+
 async function main(): Promise<void> {
     const hud = createHud();
     try {
@@ -85,27 +95,32 @@ async function main(): Promise<void> {
         const settings = defaultSettings();
         const city = await loadCity(settings, hud);
         let poller: Poller | null = null;
-        let latestRequest = 0;
-        let restarts = Promise.resolve();
 
-        // Restarts run one after another so /init calls never race; only the
-        // latest request starts polling.
-        const restart = (): void => {
-            const request = ++latestRequest;
-            poller?.stop();
-            hud.showStatus('Restarting the simulation with the new traffic...', 'info');
-            restarts = restarts.then(async () => {
-                if (request !== latestRequest) {
-                    return;
-                }
-                await initWith(settings, hud);
-                if (request === latestRequest) {
-                    poller = pollRun(scene, settings, hud);
-                }
-            });
-        };
+        const restarter = createRestarter({
+            wanted: () => runOptions(settings),
+            init: (run) => initWith(run, hud),
+            stopRun: () => {
+                poller?.stop();
+                hud.showStatus('Restarting the simulation with the new settings...', 'info');
+            },
+            startRun: () => {
+                poller = pollRun(scene, settings, hud);
+            },
+            onRefused: (error, kept) => {
+                console.error(error);
+                settings.spawnInterval = kept.spawnInterval;
+                settings.spawnPoints = kept.spawnPoints;
+                scene.refreshControls();
+                hud.showStatus(`The server refused that setting (${errorText(error)}). The current run continues.`,
+                    'error', REFUSED_NOTICE_MS);
+            },
+            onFailed: (error) => {
+                console.error(error);
+                hud.showStatus(errorText(error), 'error');
+            },
+        }, runOptions(settings));
 
-        const scene = new CityScene(gl, city, settings, { onTrafficChange: restart });
+        const scene = new CityScene(gl, city, settings, { onRunOptionsChange: () => void restarter.restart() });
         scene.setupUI();
         scene.draw(0);
         hud.clearStatus();
