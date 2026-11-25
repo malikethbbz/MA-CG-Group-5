@@ -11,8 +11,9 @@ import { drawItem, type DrawItem } from './draw_item';
 import { PALETTE, scaleColor } from './palette';
 import { sidewalks, type Side } from './sidewalks';
 
-// One lamp per LAMP_SPACING diagonals of building cells
-export const LAMP_SPACING = 2;
+// One lamp per LAMP_SPACING diagonals of building cells: 1 lights every building
+// that faces a road, so the streets read as lit at night
+export const LAMP_SPACING = 1;
 // How far the pole sits from its building cell's centre, toward the road (cells):
 // on the outer half of the sidewalk, past where pedestrians walk.
 export const POLE_OFFSET = 0.47;
@@ -22,7 +23,7 @@ const HEAD_SIZE: readonly [number, number, number] = [0.15, 0.07, 0.15];
 // The head leans out over the curb
 const HEAD_REACH = 0.07;
 const POOL_SIZE = 0.4;
-const POOL_STRENGTH = 0.5;
+const POOL_STRENGTH = 0.4;
 
 export interface StreetLamp {
     readonly cell: GridCell;
@@ -41,7 +42,7 @@ export function streetLamps(city: CityData): StreetLamp[] {
             continue;
         }
         lit.add(id);
-        const color = ((cell.x + cell.z) / LAMP_SPACING) % 2 === 0 ? PALETTE.lampPink : PALETTE.lampCyan;
+        const color = (cell.x + cell.z) % 2 === 0 ? PALETTE.lampPink : PALETTE.lampCyan;
         lamps.push({ cell, side, color });
     }
     return lamps;

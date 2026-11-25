@@ -4,7 +4,6 @@
  */
 
 import * as twgl from 'twgl-base.js';
-import { M4, type Mat4 } from '../../libs/3d-lib';
 import { Scene } from '../../libs/scene_multi_shader';
 import type { CityData, LightState } from '../api/contract';
 import { CELL_SIZE } from '../config';
@@ -112,6 +111,7 @@ export class CityScene extends Scene {
             u_lightDirection: LIGHT_DIRECTION,
             u_lightColor: LIGHT_COLOR,
             u_ambientColor: AMBIENT,
+            u_viewProjection: viewProjection,
             u_windowColor: PALETTE.windowCyan.slice(0, 3),
             u_windowAltColor: PALETTE.windowPink.slice(0, 3),
             ...fogUniforms(this.view.posArray, this.view.distance, this.layout.extent),
@@ -119,17 +119,17 @@ export class CityScene extends Scene {
 
         const alpha = frameAlpha(now - this.frameReceivedAt, this.settings.stepIntervalMs);
         for (const item of this.layout.statics) {
-            this.drawItem(item, viewProjection);
+            this.drawItem(item);
         }
         for (const item of this.lampItems()) {
-            this.drawItem(item, viewProjection);
+            this.drawItem(item);
         }
         this.crowd.update(now);
         for (const item of this.crowd.items) {
-            this.drawItem(item, viewProjection);
+            this.drawItem(item);
         }
         for (const item of vehiclesDrawItems(this.vehicles, alpha, this.sirens, now)) {
-            this.drawItem(item, viewProjection);
+            this.drawItem(item);
         }
         const target = this.view.targetArray;
         const sources = activeSirenSources(this.vehicles, this.sirens, alpha, [target[0], target[1], target[2]]);
@@ -146,10 +146,9 @@ export class CityScene extends Scene {
         }));
     }
 
-    private drawItem(item: DrawItem, viewProjection: Mat4): void {
+    private drawItem(item: DrawItem): void {
         this.drawObject(item.shape, {
             u_world: item.world,
-            u_worldViewProjection: M4.multiply(viewProjection, item.world),
             u_worldInverseTransform: item.normal,
             u_color: item.color,
             u_emissive: item.emissive,

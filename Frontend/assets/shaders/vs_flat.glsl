@@ -4,7 +4,8 @@ in vec3 a_normal;
 in vec4 a_color;
 
 uniform mat4 u_world;
-uniform mat4 u_worldViewProjection;
+// Set once per frame; the GPU does the per-object multiply instead of JavaScript
+uniform mat4 u_viewProjection;
 uniform mat4 u_worldInverseTransform;
 
 out vec3 v_normal;
@@ -17,10 +18,11 @@ out vec3 v_localNormal;
 out float v_heightScale;
 
 void main() {
-    gl_Position = u_worldViewProjection * a_position;
+    vec4 world = u_world * a_position;
+    gl_Position = u_viewProjection * world;
     v_normal = mat3(u_worldInverseTransform) * a_normal;
     v_color = a_color;
-    v_worldPosition = (u_world * a_position).xyz;
+    v_worldPosition = world.xyz;
     v_localPosition = a_position.xyz;
     v_localNormal = a_normal;
     v_heightScale = length(u_world[1].xyz);

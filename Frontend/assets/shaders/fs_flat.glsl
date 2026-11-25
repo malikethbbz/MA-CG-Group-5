@@ -33,6 +33,8 @@ out vec4 outColor;
 
 const float FLOOR_HEIGHT = 0.2;
 const float COLUMNS = 3.0;
+// Windows whose hash is below this stay dark: about a quarter of them
+const float LIT_SHARE_CUTOFF = 0.25;
 
 float hash(vec3 p) {
     return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
@@ -58,7 +60,7 @@ float windowLight(out float alt) {
     float face = dot(n, vec3(1.0, 2.0, 3.0));
     float pick = hash(vec3(floorIndex, column + face * 5.0, u_windowSeed));
     alt = step(0.88, pick);
-    return inBand * inColumn * step(0.42, pick) * (0.65 + 0.35 * fract(pick * 13.0));
+    return inBand * inColumn * step(LIT_SHARE_CUTOFF, pick) * (0.7 + 0.3 * fract(pick * 13.0));
 }
 
 void main() {

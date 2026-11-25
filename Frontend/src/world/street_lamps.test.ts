@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CityData, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
-import { WALL_OFFSET } from './sidewalks';
+import { sidewalks, WALL_OFFSET } from './sidewalks';
 import { LAMP_SPACING, streetLampItems, streetLamps } from './street_lamps';
 
 // A 9x9 block: a ring road around a 7x7 block of buildings, plus one traffic light
@@ -58,6 +58,14 @@ describe('streetLamps', () => {
             // ...and outside the building's footprint
             expect(Math.max(Math.abs(px - lamp.cell.x), Math.abs(pz - lamp.cell.z))).toBeGreaterThan(WALL_OFFSET);
         }
+    });
+
+    it('lights every building that faces a road, once, so the streets read as lit', () => {
+        const city = ringCity();
+        const facing = new Set(sidewalks(city).map((w) => key(w.cell.x, w.cell.z)));
+        const lit = streetLamps(city).map((l) => key(l.cell.x, l.cell.z));
+        expect(new Set(lit).size).toBe(lit.length);
+        expect(new Set(lit)).toEqual(facing);
     });
 
     it('leaves the curb next to a traffic light to the light', () => {
