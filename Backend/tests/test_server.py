@@ -256,3 +256,36 @@ def test_init_passes_the_spawn_interval_to_the_model(client: FlaskClient) -> Non
     for _ in range(2):
         frame = client.get("/step").get_json()
     assert frame["stats"]["spawned"] == 8
+
+
+@pytest.mark.parametrize("spawn_points", ["sides", "Edges", "", 1, None, ["edges"]])
+def test_init_rejects_spawn_points_outside_corners_and_edges(
+    client: FlaskClient, spawn_points: object
+) -> None:
+    response = client.post("/init", json={"spawnPoints": spawn_points})
+    assert response.status_code == 400
+    message = response.get_json()["message"]
+    assert "spawnPoints" in message and "edges" in message
+    assert city_server.city_model is None
+
+
+def spawn_cells(client: FlaskClient, steps: int) -> set[tuple[int, int]]:
+    """Cells where cars first appear. Cars spawn after everyone moves, so a car new to
+    a frame still sits on the cell it spawned on."""
+    frames = [client.get("/step").get_json() for _ in range(steps)]
+    cells = set()
+    for before, after in itertools.pairwise(frames):
+        old = {v["id"] for v in before["vehicles"]}
+        cells |= {(v["x"], v["z"]) for v in after["vehicles"] if v["id"] not in old}
+    return cells
+
+
+def test_init_with_edge_spawn_points_spawns_beyond_the_four_corners(
+    client: FlaskClient,
+) -> None:
+    client.post("/init", json={"spawnInterval": 1})
+    corner_spawns = spawn_cells(client, 10)
+    assert corner_spawns and corner_spawns <= {(0, 0), (35, 0), (0, 34), (35, 34)}
+    response = client.post("/init", json={"spawnPoints": "edges", "spawnInterval": 1})
+    assert response.status_code == 200
+    assert len(spawn_cells(client, 10)) > 4

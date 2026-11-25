@@ -5,8 +5,8 @@
 import json
 import logging
 import os
-from collections.abc import Callable
-from typing import Any, NamedTuple
+from collections.abc import Callable, Collection
+from typing import Any, NamedTuple, cast
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
@@ -19,7 +19,9 @@ from traffic_base.model import (
     DEFAULT_MAP,
     MAX_SPAWN_INTERVAL,
     SPAWN_INTERVAL,
+    SPAWN_MODES,
     CityModel,
+    SpawnPoints,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +92,7 @@ class InitParams(NamedTuple):
     map_name: str
     seed: int
     spawn_interval: int
+    spawn_points: SpawnPoints
 
 
 def _int_param(params: JsonDict, key: str, default: int, low: int, high: int) -> int:
@@ -101,6 +104,15 @@ def _int_param(params: JsonDict, key: str, default: int, low: int, high: int) ->
         or not low <= value <= high
     ):
         raise InitParamsError(f"{key} must be an integer from {low} to {high}.")
+    return value
+
+
+def _choice_param(
+    params: JsonDict, key: str, default: str, options: Collection[str]
+) -> str:
+    value = params.get(key, default)
+    if not isinstance(value, str) or value not in options:
+        raise InitParamsError(f"{key} must be one of {sorted(options)}.")
     return value
 
 
@@ -116,13 +128,12 @@ def _parse_init_params() -> InitParams:
             raise InitParamsError("Body must be JSON.") from error
     if not isinstance(params, dict):
         raise InitParamsError("Body must be a JSON object.")
-    map_name = params.get("map", DEFAULT_MAP)
-    if not isinstance(map_name, str) or map_name not in AVAILABLE_MAPS:
-        raise InitParamsError(f"Unknown map. Options: {sorted(AVAILABLE_MAPS)}")
+    spawn_points = _choice_param(params, "spawnPoints", "corners", SPAWN_MODES)
     return InitParams(
-        map_name,
+        _choice_param(params, "map", DEFAULT_MAP, AVAILABLE_MAPS),
         _int_param(params, "seed", DEFAULT_SEED, 0, MAX_SEED - 1),
         _int_param(params, "spawnInterval", SPAWN_INTERVAL, 1, MAX_SPAWN_INTERVAL),
+        cast(SpawnPoints, spawn_points),  # one of SPAWN_MODES, checked above
     )
 
 
@@ -138,6 +149,7 @@ def init_model() -> Reply:
             map_name=params.map_name,
             seed=params.seed,
             spawn_interval=params.spawn_interval,
+            spawn_points=params.spawn_points,
         )
     except (OSError, ValueError, KeyError):
         logger.exception("map %s could not be loaded", params.map_name)

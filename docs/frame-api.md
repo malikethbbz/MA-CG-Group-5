@@ -3,8 +3,22 @@
 The frontend draws the simulation from two endpoints. `/init` still creates the model.
 
 `POST /init` takes an optional JSON object: `map` (a file in `city_files/`), `seed`
-(0 to 2³²−1) and `spawnInterval` (1 to 10, default 10, the assignment's rate). Lower
-intervals spawn denser traffic; 2 still flows, 1 gridlocks the 2025 map.
+(0 to 2³²−1), `spawnInterval` (1 to 10, default 10, the assignment's rate) and
+`spawnPoints` (`"corners"` or `"edges"`, default `"corners"`). Any other value gets a
+400 with a message naming the field.
+
+- `"corners"` is the assignment's rule: every spawn step puts a car on each free map
+  corner. Lower intervals spawn denser traffic; 2 still flows (about 140 cars at
+  once), but 1 jams the four corner cells within about 70 steps.
+- `"edges"` spawns on every border road cell that is not a light and can reach a
+  destination (the whole outer ring). Each spawn step fills 2 of the free ones, chosen
+  at random from the seed. Use it with `spawnInterval: 1` for the densest traffic
+  that still flows: about 190 cars at once on `2025_base.txt` and 225 on
+  `2025_reforma.txt` over 1000 steps. That is about 2 cars a step, roughly what the
+  city can drain, so more cars gridlock either map. At higher intervals `"edges"`
+  spawns fewer cars than `"corners"`.
+
+A run stops when a spawn step cannot place any car; `stats.stopReason` says why.
 
 The default map is the assignment's `2025_base.txt`. `{"map": "2025_reforma.txt"}`
 loads the same city with a Paseo de la Reforma style glorieta in the centre: a
