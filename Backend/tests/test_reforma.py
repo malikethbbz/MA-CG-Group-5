@@ -223,3 +223,13 @@ def test_cars_drive_around_a_monument_in_their_lane(tiny_city: TinyCity) -> None
         history.append(car_positions(model))
     assert model.arrived == 3  # (4, 0) reaches the destination with one step up
     assert all((2, 0) not in cars.values() for cars in history)
+
+
+def test_no_emergency_can_open_on_the_monument_plaza(glorieta: Glorieta) -> None:
+    """The island is drawn as a garden, so an ambulance landing beside it would answer
+    a call from nowhere."""
+    model = CityModel(map_name=REFORMA_MAP)
+    assert glorieta.island & model.landing_spots.keys() == set()
+    assert not glorieta.island & set(model.helipads)
+    # Buildings across the ring still take calls
+    assert len(model.landing_spots) > 100

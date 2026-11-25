@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CityData } from '../api/contract';
 import { CELL_SIZE } from '../config';
-import { buildCityLayout, buildingHeight } from './city_layout';
+import { M4, V3 } from '../../libs/3d-lib';
+import ambulanceSource from '../../../Backend/traffic_base/ambulance.py?raw';
+import { buildCityLayout, buildingHeight, HELIPAD_ROOF } from './city_layout';
+import { cityFromMap } from './map_fixture';
 import { lampColor, PALETTE, vehicleColor } from './palette';
 
 const CITY: CityData = {
@@ -62,5 +65,29 @@ describe('palette lookups', () => {
         const colors = new Set(kinds.map((kind) => vehicleColor(kind).join()));
         expect(colors.size).toBe(kinds.length);
         expect(vehicleColor('hovercraft')).toBe(PALETTE.unknownVehicle);
+    });
+});
+
+describe('helipads', () => {
+    const top = (world: Float32Array) => M4.transformPoint(world, V3.create(0, 0.5, 0))[1];
+    const at = (world: Float32Array) => {
+        const [x, , z] = M4.transformPoint(world, V3.create(0, 0, 0));
+        return `${Math.round(x / CELL_SIZE)},${Math.round(z / CELL_SIZE)}`;
+    };
+
+    it('builds each pad exactly as tall as the altitude the server parks ambulances at', () => {
+        // The server's constant, read from its source so the two sides cannot drift apart
+        const serverRoof = Number(/^ROOF_ALTITUDE = ([\d.]+)/m.exec(ambulanceSource)?.[1]);
+        expect(serverRoof).toBe(HELIPAD_ROOF);
+        const city = { ...cityFromMap('2025_base.txt'), helipads: [{ x: 2, z: 2 }, { x: 33, z: 32 }] };
+        const walls = buildCityLayout(city).statics.filter((item) => item.windowSeed !== undefined);
+        const height = new Map(walls.map((item) => [at(item.world), top(item.world)]));
+        expect(height.get('2,2')).toBeCloseTo(HELIPAD_ROOF * CELL_SIZE);
+        expect(height.get('33,32')).toBeCloseTo(HELIPAD_ROOF * CELL_SIZE);
+        // Other towers keep their own heights, so the pads are not just the default
+        const others = [...height.entries()].filter(([id]) => id !== '2,2' && id !== '33,32').map(([, h]) => h);
+        expect(others.filter((h) => Math.abs(h - HELIPAD_ROOF) > 0.05).length).toBeGreaterThan(others.length / 2);
+        const marks = buildCityLayout(city).statics.filter((item) => item.color === PALETTE.helipad);
+        expect(marks).toHaveLength(6);
     });
 });

@@ -225,15 +225,32 @@ class CityModel(Model):
                 logger.warning("spawn corner %s cannot reach any destination", start)
         return corners
 
+    def _plaza(self) -> set[Position]:
+        """Obstacle cells 4-connected to a monument: its roundabout island, a plaza
+        with no building on it."""
+        buildings = set(self.buildings)
+        plaza: set[Position] = set()
+        frontier = list(self.monuments)
+        while frontier:
+            x, y = frontier.pop()
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nxt = (x + dx, y + dy)
+                if nxt in buildings and nxt not in plaza:
+                    plaza.add(nxt)
+                    frontier.append(nxt)
+        return plaza
+
     def _place_ambulances(self, lights: set[Position]) -> None:
         """One ambulance per helipad. Helipads never host an emergency; any other
-        building can if it has a landing spot."""
-        self.helipads = choose_helipads(self.buildings, self.width, self.height)
+        building can if it has a landing spot. A monument's plaza is not a building."""
+        plaza = self._plaza()
+        buildings = [b for b in self.buildings if b not in plaza]
+        self.helipads = choose_helipads(buildings, self.width, self.height)
         self.ambulances = [Ambulance(self, pad) for pad in self.helipads]
         spawns = set(self.spawn_points)
         spots = {
             building: static_landing_spots(building, self.drivable, lights, spawns)
-            for building in self.buildings
+            for building in buildings
             if building not in self.helipads
         }
         self.landing_spots = {b: s for b, s in spots.items() if s}

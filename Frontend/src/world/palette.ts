@@ -28,6 +28,7 @@ export const PALETTE = {
     monumentStone: hex('#cfc6ee'),
     monumentGold: hex('#ffc23d'),
     plaza: hex('#173a4a'),
+    helipad: hex('#39ff6a'),
     plazaCurb: hex('#ff3fb4'),
     // Lane paint: white lines and arrows, an amber divider between opposite ways
     paint: hex('#e8e6ff'),

@@ -34,6 +34,10 @@ const CURB_HEIGHT = 0.06;
 const CURB_WIDTH = 0.08;
 // Each curb edge is cut into this many pieces, so the warp bends it into a smooth arc
 const CURB_PIECES = 4;
+// The server parks an ambulance at this altitude on its pad (ROOF_ALTITUDE in
+// Backend/traffic_base/ambulance.py), so a helipad building is exactly this tall.
+export const HELIPAD_ROOF = 1;
+const PAD_LINE = 0.06;
 
 export interface LightLamp {
     readonly id: string;
@@ -119,8 +123,20 @@ function crown(cell: GridCell, height: number, noise: number): DrawItem[] {
     return [drawItem('box', cellBox(cell, base, [BUILDING_WIDTH + 0.04, CROWN_HEIGHT, BUILDING_WIDTH + 0.04]), color, 1)];
 }
 
-function building(cell: GridCell): DrawItem[] {
-    const height = buildingHeight(cell.x, cell.z);
+// A glowing H on the roof: two posts and a crossbar.
+function padMarking(cell: GridCell): DrawItem[] {
+    const base = HELIPAD_ROOF * CELL_SIZE;
+    const bar = (size: [number, number, number], shift: [number, number]) =>
+        drawItem('box', cellBox(cell, base, size, shift), PALETTE.helipad, 1);
+    return [
+        bar([PAD_LINE, 0.01, 0.4], [-0.14, 0]),
+        bar([PAD_LINE, 0.01, 0.4], [0.14, 0]),
+        bar([0.28, 0.01, PAD_LINE], [0, 0]),
+    ];
+}
+
+function building(cell: GridCell, isHelipad: boolean): DrawItem[] {
+    const height = isHelipad ? HELIPAD_ROOF : buildingHeight(cell.x, cell.z);
     const noise = cellNoise(cell.z, cell.x);
     const color: Color = PALETTE.buildings[Math.floor(noise * PALETTE.buildings.length)];
     const walls = { ...drawItem('box', cellBox(cell, 0, [BUILDING_WIDTH, height, BUILDING_WIDTH]), color), windowSeed: noise * 997 };
@@ -128,6 +144,7 @@ function building(cell: GridCell): DrawItem[] {
         walls,
         drawItem('box', cellBox(cell, height * CELL_SIZE, [BUILDING_WIDTH - 0.06, 0.02, BUILDING_WIDTH - 0.06]), scaleColor(color, PALETTE.roofLift)),
         ...crown(cell, height, cellNoise(cell.x + 101, cell.z + 57)),
+        ...(isHelipad ? padMarking(cell) : []),
     ];
 }
 
@@ -160,9 +177,11 @@ export function buildCityLayout(city: CityData): CityLayout {
     }
     // A landmark stands on its own island; no tower is generated there
     const open = new Set([...city.landmarks.map((l) => `${l.x},${l.z}`), ...(glorieta?.plaza ?? [])]);
+    const pads = new Set(city.helipads.map((pad) => `${pad.x},${pad.z}`));
     for (const obstacle of city.obstacles) {
-        if (!open.has(`${obstacle.x},${obstacle.z}`)) {
-            statics.push(...building(obstacle));
+        const id = `${obstacle.x},${obstacle.z}`;
+        if (!open.has(id)) {
+            statics.push(...building(obstacle, pads.has(id)));
         }
     }
     if (glorieta !== null) {
