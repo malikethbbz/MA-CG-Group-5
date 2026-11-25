@@ -32,6 +32,7 @@ function car(): VehicleSpec {
             [axleX, wheelRadius, -axleZ],
             [-axleX, wheelRadius, -axleZ],
         ],
+        roofHeight: cabinLift + 0.5 * cabin[1],
     };
 }
 
@@ -58,6 +59,7 @@ function motorcycle(): VehicleSpec {
             [0, wheelRadius, axleZ],
             [0, wheelRadius, -axleZ],
         ],
+        roofHeight: torsoLift + 0.5 * torso[1] + helmet[1],
     };
 }
 

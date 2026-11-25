@@ -12,6 +12,7 @@ import { startPolling, type Poller } from './sim/poller';
 import { retryUntilOk } from './sim/retry';
 import { defaultSettings, type SimSettings } from './ui/controls';
 import { createHud, type Hud } from './ui/hud';
+import { EMPTY_SIRENS, syncSirens, type SirenMap } from './world/siren';
 import { EMPTY_VEHICLES, syncVehicles, type VehicleMap } from './world/vehicle_sync';
 
 function errorText(error: unknown): string {
@@ -56,14 +57,16 @@ function finishedMessage(frame: StepFrame): string {
 // One /step polling run; a traffic change stops it and starts a new one.
 function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
     let vehicles: VehicleMap = EMPTY_VEHICLES;
-    scene.showFrame(vehicles, [], performance.now());
+    let sirens: SirenMap = EMPTY_SIRENS;
+    scene.showFrame(vehicles, sirens, [], performance.now());
     return startPolling({
         fetchStep,
         intervalMs: () => settings.stepIntervalMs,
         retryDelayMs: RETRY_DELAY_MS,
         onFrame: (frame) => {
             vehicles = syncVehicles(vehicles, frame.vehicles).vehicles;
-            scene.showFrame(vehicles, frame.lights, performance.now());
+            sirens = syncSirens(sirens, vehicles);
+            scene.showFrame(vehicles, sirens, frame.lights, performance.now());
             hud.showStats(frame.stats);
             hud.clearStatus();
         },

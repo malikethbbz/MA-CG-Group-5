@@ -17,6 +17,9 @@ import { STAR_COUNT } from '../world/sky';
 import { vehiclesDrawItems } from '../world/vehicle_items';
 import { EMPTY_VEHICLES, type VehicleMap } from '../world/vehicle_sync';
 import { createControls, type ControlHandlers, type SimSettings } from '../ui/controls';
+import { SirenAudio } from '../audio/siren_audio';
+import { activeSirenSources, sirenGains } from '../audio/siren_mix';
+import { EMPTY_SIRENS, type SirenMap } from '../world/siren';
 import { fogUniforms, skyUniforms, withDefines } from './atmosphere';
 import { boxArrays, screenTriangleArrays, wheelArrays } from './geometry';
 import vsFlatGLSL from '../../assets/shaders/vs_flat.glsl?raw';
@@ -34,16 +37,21 @@ const CAMERA_ELEVATION = 0.3;
 const CAMERA_TARGET_LIFT = 3;
 const CAMERA_DISTANCE_FACTOR = 0.8;
 
+// What the page provides; the scene handles the sound toggle itself.
+export type SceneHandlers = Omit<ControlHandlers, 'onSoundChange'>;
+
 export class CityScene extends Scene {
     private readonly settings: SimSettings;
-    private readonly handlers: ControlHandlers;
+    private readonly handlers: SceneHandlers;
+    private readonly audio = new SirenAudio();
     private readonly layout: CityLayout;
     private readonly view: Camera3D;
     private vehicles: VehicleMap = EMPTY_VEHICLES;
+    private sirens: SirenMap = EMPTY_SIRENS;
     private lightGreen: ReadonlyMap<string, boolean> = new Map();
     private frameReceivedAt = 0;
 
-    constructor(gl: WebGL2RenderingContext, city: CityData, settings: SimSettings, handlers: ControlHandlers) {
+    constructor(gl: WebGL2RenderingContext, city: CityData, settings: SimSettings, handlers: SceneHandlers) {
         super(gl, {
             flat: { vs: vsFlatGLSL, fs: fsFlatGLSL },
             sky: { vs: vsSkyGLSL, fs: withDefines(fsSkyGLSL, { STAR_COUNT }) },
@@ -63,14 +71,18 @@ export class CityScene extends Scene {
     }
 
     // Called once per /step frame; vehicles interpolate from this moment on.
-    showFrame(vehicles: VehicleMap, lights: readonly LightState[], receivedAt: number): void {
+    showFrame(vehicles: VehicleMap, sirens: SirenMap, lights: readonly LightState[], receivedAt: number): void {
         this.vehicles = vehicles;
+        this.sirens = sirens;
         this.lightGreen = new Map(lights.map((light) => [light.id, light.green]));
         this.frameReceivedAt = receivedAt;
     }
 
     setupUI(): void {
-        createControls(this.settings, this.handlers);
+        createControls(this.settings, {
+            ...this.handlers,
+            onSoundChange: (enabled) => this.audio.setEnabled(enabled),
+        });
     }
 
     protected render(_deltaTime: number): void {
@@ -108,9 +120,12 @@ export class CityScene extends Scene {
         for (const item of this.lampItems()) {
             this.drawItem(item, viewProjection);
         }
-        for (const item of vehiclesDrawItems(this.vehicles, alpha)) {
+        for (const item of vehiclesDrawItems(this.vehicles, alpha, this.sirens, now)) {
             this.drawItem(item, viewProjection);
         }
+        const target = this.view.targetArray;
+        const sources = activeSirenSources(this.vehicles, this.sirens, alpha, [target[0], target[1], target[2]]);
+        this.audio.update(sirenGains(sources));
     }
 
     private lampItems(): DrawItem[] {

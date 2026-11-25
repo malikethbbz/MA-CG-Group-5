@@ -33,6 +33,8 @@ export interface VehicleSpec {
     readonly wheelWidth: number;
     // Wheel hub centres; every wheel's axle is the local x axis
     readonly wheelOffsets: readonly Triple[];
+    // Height of the top of the vehicle, where a light bar sits
+    readonly roofHeight: number;
 }
 
 export interface VehicleMatrices {
@@ -66,6 +68,16 @@ export function wheelHubMatrix(vehicleWorld: Mat4, offset: Triple, spin: number)
 export function childBox(vehicleWorld: Mat4, offset: Triple, size: Triple): Mat4 {
     const scale = M4.scale(V3.create(size[0], size[1], size[2]));
     return M4.multiply(vehicleWorld, M4.multiply(translation(offset), scale));
+}
+
+const BAR_LAMP_SIZE: Triple = [0.12 * CELL_SIZE, 0.06 * CELL_SIZE, 0.1 * CELL_SIZE];
+
+// Left and right lamps of a roof light bar, children of the vehicle like every part.
+export function lightBarMatrices(spec: VehicleSpec, pose: Pose): readonly [Mat4, Mat4] {
+    const vehicleWorld = vehicleWorldMatrix(pose);
+    const y = spec.roofHeight + 0.5 * BAR_LAMP_SIZE[1];
+    const x = 0.5 * BAR_LAMP_SIZE[0] + 0.01 * CELL_SIZE;
+    return [childBox(vehicleWorld, [x, y, 0], BAR_LAMP_SIZE), childBox(vehicleWorld, [-x, y, 0], BAR_LAMP_SIZE)];
 }
 
 export function vehicleMatrices(spec: VehicleSpec, pose: Pose, distanceCells: number): VehicleMatrices {
