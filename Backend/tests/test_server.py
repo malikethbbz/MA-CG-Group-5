@@ -219,3 +219,20 @@ def test_a_stopped_run_does_not_report_its_last_events_again(
     assert [f["step"] for f in frames[-3:]] == [20, 20, 20]
     assert [e["type"] for e in frames[-3]["events"]] == ["arrived"]
     assert frames[-2]["events"] == frames[-1]["events"] == []
+
+
+@pytest.mark.parametrize("interval", [0, 11, True, "3", 2.5])
+def test_init_rejects_a_spawn_interval_outside_1_to_10(
+    client: FlaskClient, interval: object
+) -> None:
+    response = client.post("/init", json={"spawnInterval": interval})
+    assert response.status_code == 400
+    assert "spawnInterval" in response.get_json()["message"]
+    assert city_server.city_model is None
+
+
+def test_init_passes_the_spawn_interval_to_the_model(client: FlaskClient) -> None:
+    client.post("/init", json={"spawnInterval": 2})
+    for _ in range(2):
+        frame = client.get("/step").get_json()
+    assert frame["stats"]["spawned"] == 8

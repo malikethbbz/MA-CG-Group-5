@@ -69,9 +69,7 @@ class CityRun:
         self.ambulances.append({a.unique_id: snapshot(a) for a in model.ambulances})
         self.events.append(list(model.events))
         self.blocked_by_reservation += sum(
-            1
-            for car in model.agents_by_type.get(Car, [])
-            if car.route and car.route[0] in model.reserved
+            1 for car in model.cars if car.route and car.route[0] in model.reserved
         )
 
 
@@ -194,7 +192,7 @@ def test_car_invariants_still_hold_with_ambulances(city_run: CityRun) -> None:
     for positions in city_run.cars:
         assert len(set(positions.values())) == len(positions)
     assert model.arrived > 100
-    assert model.active_cars == len(model.agents_by_type[Car])
+    assert model.active_cars == len(model.cars)
     assert model.spawned == model.arrived + model.stats()["active"]
 
 
@@ -223,7 +221,7 @@ def test_ambulance_hovers_over_a_car_on_the_only_spot_until_it_leaves(
     tiny_city: TinyCity,
 ) -> None:
     model = tiny_city(ONE_SPOT_CITY)
-    for car in list(model.agents_by_type[Car]):
+    for car in list(model.cars):
         car.remove()
     stalled = Car(model, model.grid[ONE_SPOT], (6, 0), model.drivable[ONE_SPOT])
     stalled.route = []  # broken down on the spot

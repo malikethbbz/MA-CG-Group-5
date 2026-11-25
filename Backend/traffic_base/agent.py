@@ -115,6 +115,12 @@ class Car(CellAgent):
             self.remove()
 
 
+class Motorcycle(Car):
+    """Follows the same rules as a car; only the frontend draws it differently."""
+
+    kind = "motorcycle"
+
+
 class Traffic_Light(FixedAgent):
     """Green for `green_steps` of every `cycle` steps, starting at `offset`.
 

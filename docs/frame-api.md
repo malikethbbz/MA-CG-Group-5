@@ -2,6 +2,10 @@
 
 The frontend draws the simulation from two endpoints. `/init` still creates the model.
 
+`POST /init` takes an optional JSON object: `map` (a file in `city_files/`), `seed`
+(0 to 2³²−1) and `spawnInterval` (1 to 10, default 10, the assignment's rate). Lower
+intervals spawn denser traffic; 2 still flows, 1 gridlocks the 2025 map.
+
 ## `GET /city`
 
 Static map data. Call it once after `/init`.
@@ -45,7 +49,8 @@ Advances the model one step (if it is still running) and returns everything that
 
 - `vehicles` holds every vehicle alive after the step. Ids are stable: create a mesh for a
   new id, move it while the id appears, delete it when the id is gone.
-- `kind` is `car` or `ambulance`; `police`, `rogue` and `swat` come later with the
+- `kind` is `car`, `motorcycle` (same rules as a car, about 30% of spawns) or
+  `ambulance`; `police`, `rogue` and `swat` come later with the
   same shape. `stats.active` counts cars only.
 - `y` is altitude in cells, 0 on the road. Flying units send `y > 0`.
 - `heading` is the last one-cell move, so a diagonal is `{"x": 1, "z": 1}`. An

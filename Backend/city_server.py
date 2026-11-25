@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
@@ -14,7 +14,13 @@ from mesa import Agent
 
 from traffic_base.agent import Car, Destination, Obstacle, Road, Traffic_Light
 from traffic_base.city_graph import DIRECTION_VECTORS, Position
-from traffic_base.model import CITY_FILES, DEFAULT_MAP, CityModel
+from traffic_base.model import (
+    CITY_FILES,
+    DEFAULT_MAP,
+    MAX_SPAWN_INTERVAL,
+    SPAWN_INTERVAL,
+    CityModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +64,8 @@ def _position(agent: Agent, **extra: object) -> JsonDict:
 
 
 def _agents_of(model: CityModel, agent_type: type[Agent]) -> list[Agent]:
-    # A type with no agents yet (no cars at step 0) is simply an empty list.
-    return list(model.agents_by_type.get(agent_type, []))
+    # select matches subclasses too, so /getAgents also lists motorcycles.
+    return list(model.agents.select(agent_type=agent_type))
 
 
 def _positions_of(
@@ -80,8 +86,26 @@ def _respond(build: Callable[[], JsonDict]) -> Reply:
         return _error("Server error, check the server log.", 500)
 
 
-def _parse_init_params() -> tuple[str, int]:
-    """Returns (map_name, seed); raises InitParamsError with a client-facing message."""
+class InitParams(NamedTuple):
+    map_name: str
+    seed: int
+    spawn_interval: int
+
+
+def _int_param(params: JsonDict, key: str, default: int, low: int, high: int) -> int:
+    """An integer in [low, high]; JSON booleans are rejected even though bool is int."""
+    value = params.get(key, default)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not low <= value <= high
+    ):
+        raise InitParamsError(f"{key} must be an integer from {low} to {high}.")
+    return value
+
+
+def _parse_init_params() -> InitParams:
+    """Raises InitParamsError with a client-facing message."""
     raw = request.get_data()
     params: object = {}  # no body means "use the defaults"
     if raw:
@@ -95,24 +119,29 @@ def _parse_init_params() -> tuple[str, int]:
     map_name = params.get("map", DEFAULT_MAP)
     if not isinstance(map_name, str) or map_name not in AVAILABLE_MAPS:
         raise InitParamsError(f"Unknown map. Options: {sorted(AVAILABLE_MAPS)}")
-    seed = params.get("seed", DEFAULT_SEED)
-    if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed < MAX_SEED:
-        raise InitParamsError(f"Seed must be an integer from 0 to {MAX_SEED - 1}.")
-    return map_name, seed
+    return InitParams(
+        map_name,
+        _int_param(params, "seed", DEFAULT_SEED, 0, MAX_SEED - 1),
+        _int_param(params, "spawnInterval", SPAWN_INTERVAL, 1, MAX_SPAWN_INTERVAL),
+    )
 
 
 @app.route("/init", methods=["GET", "POST"])
 def init_model() -> Reply:
     global city_model
     try:
-        map_name, seed = _parse_init_params()
+        params = _parse_init_params()
     except InitParamsError as error:
         return _error(str(error), 400)
     try:
-        city_model = CityModel(map_name=map_name, seed=seed)
+        city_model = CityModel(
+            map_name=params.map_name,
+            seed=params.seed,
+            spawn_interval=params.spawn_interval,
+        )
     except (OSError, ValueError, KeyError):
-        logger.exception("map %s could not be loaded", map_name)
-        return _error(f"Map {map_name} could not be loaded.", 400)
+        logger.exception("map %s could not be loaded", params.map_name)
+        return _error(f"Map {params.map_name} could not be loaded.", 400)
     return jsonify(
         {
             "message": "Model initiated.",

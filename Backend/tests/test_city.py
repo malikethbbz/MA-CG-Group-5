@@ -4,9 +4,9 @@ import networkx as nx
 import pytest
 
 from conftest import TinyCity, car_positions
-from traffic_base.agent import PATIENCE, Car
+from traffic_base.agent import PATIENCE, Car, Motorcycle
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, is_legal_move
-from traffic_base.model import SPAWN_INTERVAL, CityModel
+from traffic_base.model import MAX_SPAWN_INTERVAL, SPAWN_INTERVAL, CityModel
 
 RIGHT = DIRECTION_VECTORS["Right"]
 History = list[dict[int, Position]]
@@ -178,7 +178,7 @@ def test_blocked_car_reroutes_around_a_stalled_car_and_arrives(
     tiny_city: TinyCity,
 ) -> None:
     model = tiny_city([">>>>>", ">>>>D"])
-    for car in list(model.agents_by_type[Car]):
+    for car in list(model.cars):
         car.remove()
     stalled = place_car_alone(model, (1, 0), (4, 0))
     stalled.route = []  # broken down: never moves again
@@ -214,3 +214,28 @@ def test_blocked_car_with_no_detour_retries_once_per_patience_window(
         model.step()
     blocked_steps = model.steps - SPAWN_INTERVAL
     assert calls == [{(1, 0)}] * (blocked_steps // PATIENCE)
+
+
+def test_motorcycles_spawn_and_follow_the_same_rules(
+    city_run: tuple[CityModel, History],
+) -> None:
+    # city_run's invariants (one cell per car, street direction, no red lights) cover
+    # every Car subclass because model.cars selects by isinstance.
+    model, _ = city_run
+    kinds = {frame["kind"] for frame in model.vehicles()}
+    assert {"car", "motorcycle"} <= kinds
+    share = sum(isinstance(c, Motorcycle) for c in model.cars) / model.active_cars
+    assert 0 < share < 1
+
+
+def test_a_shorter_spawn_interval_spawns_sooner() -> None:
+    model = CityModel(spawn_interval=3)
+    for _ in range(3):
+        model.step()
+    assert model.spawned == 8
+
+
+@pytest.mark.parametrize("interval", [0, MAX_SPAWN_INTERVAL + 1])
+def test_spawn_interval_outside_the_allowed_range_is_rejected(interval: int) -> None:
+    with pytest.raises(ValueError, match="spawn_interval"):
+        CityModel(spawn_interval=interval)

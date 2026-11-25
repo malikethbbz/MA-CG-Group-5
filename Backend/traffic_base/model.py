@@ -6,9 +6,10 @@ from typing import TypedDict
 
 import networkx as nx
 from mesa import Model
+from mesa.agent import AgentSet
 from mesa.discrete_space import OrthogonalMooreGrid
 
-from .agent import Car, Destination, Obstacle, Road, Traffic_Light
+from .agent import Car, Destination, Motorcycle, Obstacle, Road, Traffic_Light
 from .ambulance import (
     EMERGENCY_INTERVAL,
     Ambulance,
@@ -31,7 +32,9 @@ logger = logging.getLogger(__name__)
 
 CITY_FILES = Path(__file__).resolve().parent.parent / "city_files"
 DEFAULT_MAP = "2025_base.txt"
-SPAWN_INTERVAL = 10
+SPAWN_INTERVAL = 10  # the assignment's rate; denser runs pass spawn_interval
+MAX_SPAWN_INTERVAL = 10
+MOTORCYCLE_SHARE = 0.3  # chance a spawned vehicle is a motorcycle
 ROAD_SYMBOLS = "<>^v"
 LIGHT_SYMBOLS = "sS"
 # Agents a single cell can hold; a road cell holds the road, maybe a light, and a car.
@@ -61,9 +64,18 @@ class CityModel(Model):
     """
 
     def __init__(
-        self, map_name: str = DEFAULT_MAP, seed: int = 42, map_dir: Path = CITY_FILES
+        self,
+        map_name: str = DEFAULT_MAP,
+        seed: int = 42,
+        map_dir: Path = CITY_FILES,
+        spawn_interval: int = SPAWN_INTERVAL,
     ) -> None:
+        if not 1 <= spawn_interval <= MAX_SPAWN_INTERVAL:
+            raise ValueError(
+                f"spawn_interval must be 1..{MAX_SPAWN_INTERVAL}, not {spawn_interval}"
+            )
         super().__init__(rng=seed)
+        self.spawn_interval = spawn_interval
         symbols = json.loads((map_dir / "mapDictionary.json").read_text())
         lines = [
             line.strip()
@@ -185,7 +197,8 @@ class CityModel(Model):
         for start in self.spawn_points:
             if self._is_free(start) and self.reachable[start]:
                 destination = self.random.choice(self.reachable[start])
-                Car(self, self.grid[start], destination, self.drivable[start])
+                vehicle = Motorcycle if self.random.random() < MOTORCYCLE_SHARE else Car
+                vehicle(self, self.grid[start], destination, self.drivable[start])
                 placed += 1
         self.spawned += placed
         return placed
@@ -211,8 +224,13 @@ class CityModel(Model):
         self.arrived_wait_steps += wait_steps
 
     @property
+    def cars(self) -> AgentSet:
+        """Cars and motorcycles; agents_by_type would miss the Car subclasses."""
+        return self.agents.select(agent_type=Car)
+
+    @property
     def active_cars(self) -> int:
-        return len(self.agents_by_type.get(Car, []))
+        return len(self.cars)
 
     def stats(self) -> Stats:
         def average(total: int) -> float | None:
@@ -239,9 +257,8 @@ class CityModel(Model):
             light.step()
         for ambulance in self.ambulances:
             ambulance.step()
-        if Car in self.agents_by_type:
-            self.agents_by_type[Car].shuffle_do("step")
-        if self.steps % SPAWN_INTERVAL == 0 and self._spawn_cars() == 0:
+        self.cars.shuffle_do("step")
+        if self.steps % self.spawn_interval == 0 and self._spawn_cars() == 0:
             self.running = False
             self.stop_reason = self._why_no_spawn()
             logger.warning(

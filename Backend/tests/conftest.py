@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from traffic_base.agent import Car
 from traffic_base.city_graph import Position
 from traffic_base.model import CityModel
 
@@ -35,5 +34,5 @@ def tiny_city(tmp_path: Path) -> TinyCity:
 
 
 def car_positions(model: CityModel) -> dict[int, Position]:
-    cars = model.agents_by_type.get(Car, [])
+    cars = model.cars
     return {car.unique_id: car.cell.coordinate for car in cars}
