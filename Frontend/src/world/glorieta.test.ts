@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BLEND_CELLS, findGlorieta, RING_LANES, warpPoint, type Glorieta } from './glorieta';
+import { BLEND_CELLS, findGlorieta, RING_LANES, warpPoint, warpPose, type Glorieta } from './glorieta';
+import { vehiclesDrawItems } from './vehicle_items';
+import { EMPTY_VEHICLES, syncVehicles } from './vehicle_sync';
 import { cityFromMap } from './map_fixture';
 
 const reforma = cityFromMap('2025_reforma.txt');
@@ -132,5 +134,53 @@ describe('warpPoint', () => {
                 expect(radiusOf(g, warpPoint(g, x + dx, z + dz))).toBeLessThanOrEqual(g.radius - RING_LANES + 1e-9);
             }
         }
+    });
+});
+
+describe('warpPose', () => {
+    const yawOf = (dx: number, dz: number) => Math.atan2(dx, dz);
+
+    it('turns a car on the ring to drive along the circle, counter-clockwise', () => {
+        const g = glorieta();
+        // Side cells only: at the corners Reforma enters and leaves the ring, so a car
+        // there may rightly head in or out
+        const sides = ringCells(g).filter((c) =>
+            Math.abs(c.x - g.centre[0]) < g.island[0] || Math.abs(c.z - g.centre[1]) < g.island[1]);
+        expect(sides).toHaveLength(2 * RING_LANES * (5 + 3));
+        for (const cell of sides) {
+            const road = [...reforma.roads, ...reforma.lights].find((r) => r.x === cell.x && r.z === cell.z);
+            const ahead = { Right: [1, 0], Left: [-1, 0], Up: [0, 1], Down: [0, -1] }[road!.direction];
+            const pose = warpPose(g, { x: cell.x, y: 0, z: cell.z, yaw: yawOf(ahead[0], ahead[1]) });
+            const radial = [pose.x - g.centre[0], pose.z - g.centre[1]];
+            const heading = [Math.sin(pose.yaw), Math.cos(pose.yaw)];
+            const r = Math.hypot(radial[0], radial[1]);
+            // cross > 0: heading turns counter-clockwise round the centre (x toward z)
+            const cross = (radial[0] * heading[1] - radial[1] * heading[0]) / r;
+            const along = (radial[0] * heading[0] + radial[1] * heading[1]) / r;
+            expect(cross, `car at ${cell.x}, ${cell.z} drives the wrong way`).toBeGreaterThan(0.95);
+            expect(Math.abs(along)).toBeLessThan(0.3);
+        }
+    });
+
+    it('leaves a car away from the roundabout exactly as the server placed it', () => {
+        const pose = { x: 3, y: 0, z: 3, yaw: 1.2 };
+        expect(warpPose(glorieta(), pose)).toEqual(pose);
+        expect(warpPose(null, pose)).toBe(pose);
+    });
+
+    it('draws vehicles rigid: placed on the circle on the CPU, never bent by the shader', () => {
+        const g = glorieta();
+        const frame = [{ id: 'c1', kind: 'car', x: 19, y: 0, z: 23, heading: { x: -1, z: 0 }, state: 'driving' }];
+        const { vehicles } = syncVehicles(EMPTY_VEHICLES, frame);
+        const items = vehiclesDrawItems(vehicles, 1, undefined, 0, g);
+        expect(items.length).toBeGreaterThan(0);
+        expect(items.every((item) => item.unwarped === true)).toBe(true);
+        // The car's centre sits where the warp puts its cell, not on the grid
+        const [wx, wz] = warpPoint(g, 19, 23);
+        const xs = items.map((item) => item.world[12]);
+        const zs = items.map((item) => item.world[14]);
+        expect(Math.abs(xs.reduce((a, b) => a + b) / xs.length - wx)).toBeLessThan(0.2);
+        expect(Math.abs(zs.reduce((a, b) => a + b) / zs.length - wz)).toBeLessThan(0.2);
+        expect(Math.hypot(wx - 19, wz - 23)).toBeGreaterThan(0.5);
     });
 });

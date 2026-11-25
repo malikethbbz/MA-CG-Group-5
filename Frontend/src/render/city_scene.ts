@@ -140,7 +140,7 @@ export class CityScene extends Scene {
         for (const item of this.crowd.items) {
             this.drawItem(item);
         }
-        for (const item of vehiclesDrawItems(this.vehicles, alpha, this.sirens, now)) {
+        for (const item of vehiclesDrawItems(this.vehicles, alpha, this.sirens, now, this.layout.glorieta)) {
             this.drawItem(item);
         }
         const target = this.view.targetArray;

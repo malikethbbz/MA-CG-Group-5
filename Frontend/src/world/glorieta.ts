@@ -15,6 +15,7 @@
 
 import type { CityData, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
+import type { Pose } from './interpolation';
 
 // The server's glorieta is two lanes wide all round
 export const RING_LANES = 2;
@@ -108,12 +109,17 @@ const smoothstep = (edge0: number, edge1: number, x: number): number => {
     return t * t * (3 - 2 * t);
 };
 
+// How far inside the ring's outer edge a point lies, in cells; negative outside.
+function insetOf(g: Glorieta, x: number, z: number): number {
+    return Math.min(g.outer[0] - Math.abs(x - g.centre[0]), g.outer[1] - Math.abs(z - g.centre[1]));
+}
+
 // Where grid point (x, z) is drawn.
 export function warpPoint(g: Glorieta, x: number, z: number): [number, number] {
     const px = x - g.centre[0];
     const pz = z - g.centre[1];
     const [a, b] = g.outer;
-    const inset = Math.min(a - Math.abs(px), b - Math.abs(pz));
+    const inset = insetOf(g, x, z);
     let bent: [number, number];
     if (inset >= RING_LANES) {
         // The island: scale out to its edge, then shrink onto the inner disk
@@ -125,6 +131,23 @@ export function warpPoint(g: Glorieta, x: number, z: number): [number, number] {
     }
     const w = 1 - smoothstep(0, BLEND_CELLS, -inset);
     return [x + (bent[0] + g.centre[0] - x) * w, z + (bent[1] + g.centre[1] - z) * w];
+}
+
+// How far ahead the heading is sampled, in cells: short enough to follow the curve
+const HEADING_PROBE = 0.01;
+
+// A vehicle is rigid, so the shader must not bend it: bending each vertex would
+// shear a car sideways on the ring. Instead its centre moves to the warped point and
+// it turns to face along the warped road there.
+export function warpPose(g: Glorieta | null, pose: Pose): Pose {
+    // Past the fade the city is on its grid, and so is the car
+    if (g === null || insetOf(g, pose.x, pose.z) < -(BLEND_CELLS + HEADING_PROBE)) {
+        return pose;
+    }
+    const [x, z] = warpPoint(g, pose.x, pose.z);
+    const [ax, az] = warpPoint(g, pose.x + HEADING_PROBE * Math.sin(pose.yaw),
+        pose.z + HEADING_PROBE * Math.cos(pose.yaw));
+    return { ...pose, x, z, yaw: Math.atan2(ax - x, az - z) };
 }
 
 // Uniforms for the warp in vs_flat.glsl, in world units. Without a glorieta the

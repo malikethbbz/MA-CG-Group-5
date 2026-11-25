@@ -5,6 +5,7 @@
 
 import type { Color } from '../../libs/color';
 import { drawItem, type DrawItem } from './draw_item';
+import { warpPose, type Glorieta } from './glorieta';
 import type { Pose } from './interpolation';
 import { PALETTE, scaleColor } from './palette';
 import { EMPTY_SIRENS, flashOffsetMs, sirenLevels, sirenSpec, type SirenMap } from './siren';
@@ -47,22 +48,25 @@ function lightBarItems(vehicle: TrackedVehicle, spec: VehicleSpec, pose: Pose, s
     });
 }
 
-function vehicleItems(vehicle: TrackedVehicle, alpha: number, sirens: SirenMap, timeMs: number): DrawItem[] {
+function vehicleItems(vehicle: TrackedVehicle, alpha: number, sirens: SirenMap, timeMs: number,
+    glorieta: Glorieta | null): DrawItem[] {
     const { spec, color: bodyColor } = vehicleLook(vehicle.kind, vehicle.id);
-    const pose = vehiclePose(vehicle, alpha);
+    const pose = warpPose(glorieta, vehiclePose(vehicle, alpha));
     const matrices = vehicleMatrices(spec, pose, travelledDistance(vehicle, alpha));
     const parts = spec.parts.map((part, i) => {
         const { color, emissive } = finish(part.paint, bodyColor);
         return drawItem('box', matrices.parts[i], color, emissive);
     });
-    return [
+    const items = [
         ...parts,
         ...matrices.wheels.map((wheel) => drawItem('wheel', wheel, PALETTE.wheel)),
         ...lightBarItems(vehicle, spec, pose, sirens, timeMs),
     ];
+    // Already placed on the warped road, so the shader must not bend it again
+    return glorieta === null ? items : items.map((item) => ({ ...item, unwarped: true }));
 }
 
 export function vehiclesDrawItems(vehicles: VehicleMap, alpha: number, sirens: SirenMap = EMPTY_SIRENS,
-    timeMs = 0): DrawItem[] {
-    return [...vehicles.values()].flatMap((vehicle) => vehicleItems(vehicle, alpha, sirens, timeMs));
+    timeMs = 0, glorieta: Glorieta | null = null): DrawItem[] {
+    return [...vehicles.values()].flatMap((vehicle) => vehicleItems(vehicle, alpha, sirens, timeMs, glorieta));
 }
