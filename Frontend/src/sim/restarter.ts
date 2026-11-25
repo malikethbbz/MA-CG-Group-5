@@ -1,5 +1,5 @@
 /*
- * Restarts the simulation when a run option (traffic, spawn points) changes.
+ * Restarts the simulation when a run option (the Traffic preset) changes.
  * Restarts run one after another so /init calls never race, and only the latest
  * request starts polling. If the server refuses the new options (a 4xx), its model is
  * untouched, so polling resumes on the previous run and the caller is told which

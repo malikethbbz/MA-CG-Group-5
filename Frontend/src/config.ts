@@ -12,23 +12,27 @@ export const DEFAULT_STEP_INTERVAL_MS = 400;
 export const MIN_STEP_INTERVAL_MS = 100;
 export const MAX_STEP_INTERVAL_MS = 2000;
 
-// Traffic presets for the GUI, as /init spawnInterval values (1..10, lower is denser).
-// 10 is the assignment's rate; 2 still flows, 1 gridlocks the map.
-export const TRAFFIC_LEVELS: Readonly<Record<string, number>> = {
-    'Normal': 10,
-    'Busy': 5,
-    'Rush hour': 3,
-    'Gridlock-ish': 2,
-};
-export const DEFAULT_SPAWN_INTERVAL = 10;
-
 // Where cars enter: the four corners (the assignment's rule) or every border road cell.
 export type SpawnPoints = 'corners' | 'edges';
-export const SPAWN_POINT_CHOICES: Readonly<Record<string, SpawnPoints>> = {
-    'Corners': 'corners',
-    'Whole border': 'edges',
-};
 export const DEFAULT_SPAWN_POINTS: SpawnPoints = 'corners';
+
+export interface TrafficPreset {
+    // Steps between spawns, sent to /init as spawnInterval (1..10)
+    readonly spawnInterval: number;
+    readonly spawnPoints: SpawnPoints;
+}
+
+// One menu instead of two: edge spawning only adds traffic at interval 1 (the server
+// caps it at 2 cars per step), and corners at interval 1 gridlocks. Measured peaks on
+// the 2025 map: Normal ~27 cars, Packed ~140, Max city ~190.
+export const TRAFFIC_PRESETS: Readonly<Record<string, TrafficPreset>> = {
+    'Normal (assignment)': { spawnInterval: 10, spawnPoints: 'corners' },
+    'Busy': { spawnInterval: 5, spawnPoints: 'corners' },
+    'Rush hour': { spawnInterval: 3, spawnPoints: 'corners' },
+    'Packed': { spawnInterval: 2, spawnPoints: 'corners' },
+    'Max city': { spawnInterval: 1, spawnPoints: 'edges' },
+};
+export const DEFAULT_TRAFFIC = 'Normal (assignment)';
 
 // Maps the server can load. The original map is the assignment's and stays the default.
 export const MAP_CHOICES: Readonly<Record<string, string>> = {

@@ -13,6 +13,7 @@ import { createRestarter } from './sim/restarter';
 import { retryUntilOk } from './sim/retry';
 import { initOptions, isClientError, type RunOptions } from './sim/run_options';
 import { mapFromUrl, urlForMap } from './sim/map_choice';
+import { trafficName, trafficPreset } from './sim/traffic';
 import { defaultSettings, type SimSettings } from './ui/controls';
 import { createHud, type Hud } from './ui/hud';
 import { EMPTY_SIRENS, syncSirens, type SirenMap } from './world/siren';
@@ -86,7 +87,7 @@ function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
 const REFUSED_NOTICE_MS = 6000;
 
 function runOptions(settings: SimSettings): RunOptions {
-    return { map: settings.map, spawnInterval: settings.spawnInterval, spawnPoints: settings.spawnPoints };
+    return { map: settings.map, ...trafficPreset(settings.traffic) };
 }
 
 async function main(): Promise<void> {
@@ -109,8 +110,7 @@ async function main(): Promise<void> {
             },
             onRefused: (error, kept) => {
                 console.error(error);
-                settings.spawnInterval = kept.spawnInterval;
-                settings.spawnPoints = kept.spawnPoints;
+                settings.traffic = trafficName(kept);
                 scene.refreshControls();
                 hud.showStatus(`The server refused that setting (${errorText(error)}). The current run continues.`,
                     'error', REFUSED_NOTICE_MS);
