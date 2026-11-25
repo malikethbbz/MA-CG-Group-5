@@ -1,7 +1,7 @@
 /*
  * The course Camera3D with keyboard handling that works for "+" in Chrome (see
- * ui/camera_keys.ts) and zoom limits sized to the city instead of a fixed 10..50,
- * so the camera can come down to street level to look at a car.
+ * ui/camera_keys.ts), zoom limits sized to the city instead of a fixed 10..50 so the
+ * camera can come down to street level, and a pan that cannot go under the ground.
  */
 
 import { Camera3D } from '../../libs/camera3d';
@@ -9,6 +9,8 @@ import { CameraKeys, type CameraAction } from '../ui/camera_keys';
 
 // Distance change per frame while a zoom key is held
 const ZOOM_STEP = 0.6;
+// Pan per frame while a key is held; the course default (0.5) crossed the map in a second
+const PAN_STEP = 0.2;
 const MIN_DISTANCE = 3;
 const MAX_DISTANCE_FACTOR = 1.6;
 
@@ -34,6 +36,7 @@ export class CityCamera extends Camera3D {
     constructor(distance: number, azimuth: number, elevation: number, target: number[], extent: number) {
         super(0, distance, azimuth, elevation, target, target);
         this.zoomSpeed = ZOOM_STEP;
+        this.panSpeed = PAN_STEP;
         this.maxDistance = extent * MAX_DISTANCE_FACTOR;
     }
 
@@ -51,6 +54,13 @@ export class CityCamera extends Camera3D {
         for (const action of this.keys.takeFrame()) {
             MOVES[action](this);
         }
+    }
+
+    // W/S pan along the up axis; the point looked at never sinks below the ground,
+    // which used to put the camera under the city.
+    override pan(deltaX: number, deltaY: number): void {
+        super.pan(deltaX, deltaY);
+        this.panOffset[1] = Math.max(-this.target.y, this.panOffset[1]);
     }
 
     override zoom(delta: number): void {
