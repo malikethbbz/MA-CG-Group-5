@@ -1,21 +1,27 @@
 """Behavior tests for cars and lights, on the real 2025 maps and on tiny maps."""
 
+import itertools
+from typing import Any
+
 import networkx as nx
 import pytest
 
 from conftest import (
+    DENSE_STEPS,
     REFORMA_MAP,
     TRAFFIC_STEPS,
     TinyCity,
     TrafficRun,
     car_positions,
     moves,
+    raw_map,
     traffic_run,
 )
 from traffic_base.agent import PATIENCE, Car, Motorcycle
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, is_legal_move
 from traffic_base.model import (
     DEFAULT_MAP,
+    EDGE_SPAWNS_PER_STEP,
     MAX_SPAWN_INTERVAL,
     SPAWN_INTERVAL,
     CityModel,
@@ -23,19 +29,33 @@ from traffic_base.model import (
 
 RIGHT = DIRECTION_VECTORS["Right"]
 PLAYABLE_MAPS = [DEFAULT_MAP, REFORMA_MAP]
+LONG_RUNS = [
+    (DEFAULT_MAP, SPAWN_INTERVAL),
+    (REFORMA_MAP, SPAWN_INTERVAL),
+    (REFORMA_MAP, 3),
+]
+# Edge spawning every step: the densest setting that still flows on both maps.
+DENSE_RUNS = [(map_name, 1, "edges", DENSE_STEPS) for map_name in PLAYABLE_MAPS]
 
 
-@pytest.fixture(
-    scope="module",
-    params=[
-        (DEFAULT_MAP, SPAWN_INTERVAL),
-        (REFORMA_MAP, SPAWN_INTERVAL),
-        (REFORMA_MAP, 3),
-    ],
-    ids=lambda p: f"{p[0]}-every-{p[1]}",
-)
+def run_id(spec: tuple[Any, ...]) -> str:
+    map_name, interval, mode, steps = (*spec, "corners", TRAFFIC_STEPS)[:4]
+    return f"{map_name}-{mode}-every-{interval}-for-{steps}"
+
+
+@pytest.fixture(scope="module", params=LONG_RUNS + DENSE_RUNS, ids=run_id)
 def city_run(request: pytest.FixtureRequest) -> TrafficRun:
     """A real map run, recording every car's cell each step."""
+    return traffic_run(*request.param)
+
+
+@pytest.fixture(scope="module", params=LONG_RUNS, ids=run_id)
+def long_run(request: pytest.FixtureRequest) -> TrafficRun:
+    return traffic_run(*request.param)
+
+
+@pytest.fixture(scope="module", params=DENSE_RUNS, ids=run_id)
+def dense_run(request: pytest.FixtureRequest) -> TrafficRun:
     return traffic_run(*request.param)
 
 
@@ -250,8 +270,8 @@ def test_spawn_interval_outside_the_allowed_range_is_rejected(interval: int) -> 
         CityModel(spawn_interval=interval)
 
 
-def test_a_long_run_keeps_flowing(city_run: TrafficRun) -> None:
-    model, _ = city_run
+def test_a_long_run_keeps_flowing(long_run: TrafficRun) -> None:
+    model, _ = long_run
     assert model.running, model.stop_reason
     assert model.steps == TRAFFIC_STEPS
     assert model.arrived > model.spawned * 0.8  # the city is not slowly filling up
@@ -278,3 +298,105 @@ def test_a_map_symbol_missing_from_the_dictionary_is_rejected(
 ) -> None:
     with pytest.raises(ValueError, match=r"'\?' at row 0, column 2"):
         tiny_city([">>?>D"])
+
+
+def border_roads(map_name: str) -> set[Position]:
+    """Arrow cells on the map's outer rows and columns, read from the raw file."""
+    raw = raw_map(map_name)
+    height, width = len(raw), len(raw[0])
+    return {
+        (x, y)
+        for y in range(height)
+        for x in range(width)
+        if (x in (0, width - 1) or y in (0, height - 1))
+        and raw[height - y - 1][x] in "<>^v"
+    }
+
+
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_edge_spawn_points_are_the_border_roads_that_reach_a_destination(
+    map_name: str,
+) -> None:
+    model = CityModel(map_name=map_name, spawn_points="edges")
+    destinations = set(model.destinations)
+    expected = {
+        pos
+        for pos in border_roads(map_name)
+        if destinations & nx.descendants(model.graph, pos)
+    }
+    assert set(model.spawn_points) == expected
+    assert len(expected) > 100  # the whole outer ring, not just the corners
+    assert all(model.reachable[start] for start in model.spawn_points)
+
+
+def test_border_roads_that_only_lead_off_the_map_are_not_edge_spawns(
+    tiny_city: TinyCity,
+) -> None:
+    model = tiny_city(["<>>D"], spawn_points="edges")
+    assert sorted(model.spawn_points) == [(1, 0), (2, 0)]
+
+
+def test_edges_spawn_at_most_the_cap_on_ever_changing_free_points() -> None:
+    model = CityModel(spawn_interval=1, spawn_points="edges")
+    assert model.spawned == EDGE_SPAWNS_PER_STEP
+    seen = set(car_positions(model).values())
+    for _ in range(30):
+        before, spawned = car_positions(model), model.spawned
+        model.step()
+        after = car_positions(model)
+        new = {after[car] for car in after.keys() - before.keys()}
+        assert model.spawned - spawned == len(new) == EDGE_SPAWNS_PER_STEP
+        assert new <= set(model.spawn_points)
+        seen |= new
+    assert len(seen) > 30  # random points, not the same few every step
+
+
+def test_edge_spawning_follows_the_model_seed() -> None:
+    def run(seed: int) -> list[Position]:
+        model = CityModel(seed=seed, spawn_interval=1, spawn_points="edges")
+        for _ in range(20):
+            model.step()
+        return sorted(car_positions(model).values())
+
+    assert run(5) == run(5)
+    assert run(5) != run(6)
+
+
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_edges_reach_a_much_higher_peak_than_corners_at_interval_1(
+    map_name: str,
+) -> None:
+    corners = CityModel(map_name=map_name, spawn_interval=1)
+    corner_peak = 0
+    while corners.running and corners.steps < DENSE_STEPS:
+        corners.step()
+        corner_peak = max(corner_peak, corners.active_cars)
+    edges, history = traffic_run(map_name, 1, "edges", DENSE_STEPS)
+    assert not corners.running  # the four corner cells jam
+    assert edges.running, edges.stop_reason
+    assert max(len(cars) for cars in history) > 1.25 * corner_peak
+
+
+def test_dense_edge_traffic_keeps_draining(dense_run: TrafficRun) -> None:
+    """After the warm-up half, cars leave about as fast as they appear."""
+    model, history = dense_run
+    assert model.running, model.stop_reason
+    spawned = arrived = 0
+    for before, after in itertools.pairwise(history[len(history) // 2 :]):
+        spawned += len(after.keys() - before.keys())
+        arrived += len(before.keys() - after.keys())
+    assert arrived > 0.8 * spawned
+
+
+def test_edges_mode_stops_when_every_spawn_point_is_taken(tiny_city: TinyCity) -> None:
+    model = tiny_city([">>sD"], short_green=1, long_green=1000, spawn_points="edges")
+    assert model.spawned == 2  # both road cells; the light is no spawn point
+    while model.running and model.steps < 100:
+        model.step()
+    assert model.steps == SPAWN_INTERVAL
+    assert model.stats()["stopReason"] == "every spawn point is occupied"
+
+
+def test_an_unknown_spawn_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="spawn_points"):
+        CityModel(spawn_points="sides")  # type: ignore[arg-type]

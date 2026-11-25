@@ -18,7 +18,7 @@ from traffic_base.ambulance import (
     Ambulance,
 )
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, Vector
-from traffic_base.model import DEFAULT_MAP, CityModel
+from traffic_base.model import DEFAULT_MAP, SPAWN_INTERVAL, CityModel
 from traffic_base.vehicle import Event
 
 ARROWS: dict[str, Vector] = {
@@ -29,6 +29,8 @@ ARROWS: dict[str, Vector] = {
 }
 ORTHOGONAL = list(DIRECTION_VECTORS.values())
 RUN_STEPS = 800
+# Dense edge traffic is ~5x slower per step; 400 steps still serves 10+ emergencies.
+DENSE_RUN_STEPS = 400
 # Two-row map: helipads on the corner rooftops, one emergency building at (3, 1)
 # whose only landing spot is the road cell (3, 0) below it.
 ONE_SPOT_CITY = ["#..#..#", ">>>>>>D"]
@@ -81,12 +83,23 @@ def snapshot(ambulance: Ambulance) -> AmbulanceSnapshot:
     )
 
 
-@pytest.fixture(scope="module", params=[DEFAULT_MAP, REFORMA_MAP])
+@pytest.fixture(
+    scope="module",
+    params=[
+        (DEFAULT_MAP, "corners", SPAWN_INTERVAL, RUN_STEPS),
+        (REFORMA_MAP, "corners", SPAWN_INTERVAL, RUN_STEPS),
+        (DEFAULT_MAP, "edges", 1, DENSE_RUN_STEPS),
+    ],
+    ids=lambda p: f"{p[0]}-{p[1]}-every-{p[2]}",
+)
 def city_run(request: pytest.FixtureRequest) -> CityRun:
-    map_name = request.param
-    run = CityRun(CityModel(map_name=map_name), raw_map(map_name), map_name)
+    map_name, spawn_points, spawn_interval, steps = request.param
+    model = CityModel(
+        map_name=map_name, spawn_points=spawn_points, spawn_interval=spawn_interval
+    )
+    run = CityRun(model, raw_map(map_name), map_name)
     run.record()
-    for _ in range(RUN_STEPS):
+    for _ in range(steps):
         run.model.step()
         run.record()
     return run
@@ -304,3 +317,23 @@ def test_ambulances_never_land_on_a_light_or_a_spawn_corner(
         model.step()
         landings |= {(e["x"], e["z"]) for e in model.events if e["type"] == "landed"}
     assert landings == {(4, 2)}
+
+
+def test_ambulances_never_land_on_an_edge_spawn_point(tiny_city: TinyCity) -> None:
+    # The real maps' two-lane outer ring touches no building, so this map puts
+    # emergency buildings (2, 2) and (4, 2) between the top border road and an inner
+    # road. In edges mode the border road spawns cars, so only the inner road is safe.
+    model = tiny_city(
+        [
+            ">>>>>>D#",  # border road; pad on (7, 3)
+            "..#.#...",
+            ">>>>>>D.",  # inner road, on the border only at its first cell
+            "#.......",  # pad on (0, 0)
+        ],
+        spawn_points="edges",
+    )
+    landings = set()
+    for _ in range(300):
+        model.step()
+        landings |= {(e["x"], e["z"]) for e in model.events if e["type"] == "landed"}
+    assert landings == {(2, 1), (4, 1)}

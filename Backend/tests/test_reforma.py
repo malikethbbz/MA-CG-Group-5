@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import pytest
 
 from conftest import (
+    DENSE_STEPS,
     REFORMA_MAP,
     TinyCity,
     TrafficRun,
@@ -116,9 +117,14 @@ def glorieta() -> Glorieta:
     return find_glorieta(raw_map(REFORMA_MAP))
 
 
-@pytest.fixture(scope="module", params=[SPAWN_INTERVAL, 3], ids=lambda i: f"every-{i}")
+@pytest.fixture(
+    scope="module",
+    params=[(SPAWN_INTERVAL,), (3,), (1, "edges", DENSE_STEPS)],
+    ids=lambda p: "-".join(map(str, p)),
+)
 def reforma_run(request: pytest.FixtureRequest) -> TrafficRun:
-    return traffic_run(REFORMA_MAP, request.param)
+    """Shares test_city's cached runs, so the dense edge run costs nothing extra."""
+    return traffic_run(REFORMA_MAP, *request.param)
 
 
 def dot(a: Vector, b: Vector) -> int:
