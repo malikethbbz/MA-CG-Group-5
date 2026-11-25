@@ -15,6 +15,8 @@ export interface DrawItem {
     readonly color: Color;
     // 0 is fully lit by the sun, 1 ignores lighting (neon, signal lamps)
     readonly emissive: number;
+    // Set on buildings: lit window strips on the sides, varied by this seed
+    readonly windowSeed?: number;
 }
 
 export function normalMatrix(world: Mat4): Mat4 {
