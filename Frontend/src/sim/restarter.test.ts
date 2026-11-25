@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
 import { createRestarter, type RestarterDeps } from './restarter';
 import { retryUntilOk } from './retry';
+import { DEFAULT_MAP } from '../config';
 import { initOptions, isClientError, type RunOptions } from './run_options';
 
-const NORMAL: RunOptions = { spawnInterval: 10, spawnPoints: 'corners' };
-const EDGES: RunOptions = { spawnInterval: 10, spawnPoints: 'edges' };
-const BUSY: RunOptions = { spawnInterval: 5, spawnPoints: 'corners' };
+const NORMAL: RunOptions = { map: DEFAULT_MAP, spawnInterval: 10, spawnPoints: 'corners' };
+const EDGES: RunOptions = { map: DEFAULT_MAP, spawnInterval: 10, spawnPoints: 'edges' };
+const BUSY: RunOptions = { map: DEFAULT_MAP, spawnInterval: 5, spawnPoints: 'corners' };
 
 function deps(overrides: Partial<RestarterDeps>, wanted: () => RunOptions): RestarterDeps {
     return {
@@ -24,6 +25,11 @@ describe('initOptions', () => {
     it('leaves spawnPoints out for the default corners, so older servers still start', () => {
         expect(initOptions(NORMAL)).toEqual({ spawnInterval: 10 });
         expect(initOptions(EDGES)).toEqual({ spawnInterval: 10, spawnPoints: 'edges' });
+    });
+
+    it('sends the map only when it is not the default', () => {
+        expect(initOptions({ ...NORMAL, map: '2025_reforma.txt' }))
+            .toEqual({ spawnInterval: 10, map: '2025_reforma.txt' });
     });
 });
 

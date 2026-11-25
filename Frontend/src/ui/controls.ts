@@ -7,11 +7,13 @@
 
 import GUI from 'lil-gui';
 import {
-    DEFAULT_SPAWN_INTERVAL, DEFAULT_SPAWN_POINTS, DEFAULT_STEP_INTERVAL_MS, MAX_STEP_INTERVAL_MS,
+    DEFAULT_SPAWN_INTERVAL, DEFAULT_SPAWN_POINTS, MAP_CHOICES, DEFAULT_STEP_INTERVAL_MS, MAX_STEP_INTERVAL_MS,
     MIN_STEP_INTERVAL_MS, SPAWN_POINT_CHOICES, TRAFFIC_LEVELS, type SpawnPoints,
 } from '../config';
 
 export interface SimSettings {
+    // Map file sent to /init; changing it reloads the page with ?map=
+    map: string;
     stepIntervalMs: number;
     // Steps between car spawns, sent to /init as spawnInterval
     spawnInterval: number;
@@ -22,13 +24,16 @@ export interface SimSettings {
 }
 
 export interface ControlHandlers {
+    // The map changed: the city itself must be rebuilt
+    onMapChange(map: string): void;
     // Traffic or spawn points changed: the simulation must restart with them
     onRunOptionsChange(): void;
     onSoundChange(enabled: boolean): void;
 }
 
-export function defaultSettings(): SimSettings {
+export function defaultSettings(map: string): SimSettings {
     return {
+        map,
         stepIntervalMs: DEFAULT_STEP_INTERVAL_MS,
         spawnInterval: DEFAULT_SPAWN_INTERVAL,
         spawnPoints: DEFAULT_SPAWN_POINTS,
@@ -38,6 +43,9 @@ export function defaultSettings(): SimSettings {
 
 export function createControls(settings: SimSettings, handlers: ControlHandlers): GUI {
     const gui = new GUI({ title: 'Simulation' });
+    gui.add(settings, 'map', MAP_CHOICES)
+        .name('Map')
+        .onChange((map: string) => handlers.onMapChange(map));
     gui.add(settings, 'stepIntervalMs', MIN_STEP_INTERVAL_MS, MAX_STEP_INTERVAL_MS, 50)
         .name('Step interval (ms)');
     gui.add(settings, 'spawnInterval', TRAFFIC_LEVELS)

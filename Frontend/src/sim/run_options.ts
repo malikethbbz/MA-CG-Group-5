@@ -3,19 +3,22 @@
  */
 
 import { ApiError, type InitOptions } from '../api/client';
-import { DEFAULT_SPAWN_POINTS, type SpawnPoints } from '../config';
+import { DEFAULT_MAP, DEFAULT_SPAWN_POINTS, type SpawnPoints } from '../config';
 
 export interface RunOptions {
+    readonly map: string;
     readonly spawnInterval: number;
     readonly spawnPoints: SpawnPoints;
 }
 
-// spawnPoints is only sent when it differs from the server default, so a server that
-// does not know the option yet still starts the default run.
+// map and spawnPoints are only sent when they differ from the server defaults, so a
+// server that does not know an option yet still starts the default run.
 export function initOptions(run: RunOptions): InitOptions {
-    return run.spawnPoints === DEFAULT_SPAWN_POINTS
-        ? { spawnInterval: run.spawnInterval }
-        : { spawnInterval: run.spawnInterval, spawnPoints: run.spawnPoints };
+    return {
+        spawnInterval: run.spawnInterval,
+        ...(run.spawnPoints === DEFAULT_SPAWN_POINTS ? {} : { spawnPoints: run.spawnPoints }),
+        ...(run.map === DEFAULT_MAP ? {} : { map: run.map }),
+    };
 }
 
 // A 4xx means the server rejected the request itself; sending it again cannot help.

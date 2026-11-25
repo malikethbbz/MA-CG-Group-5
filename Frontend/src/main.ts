@@ -12,6 +12,7 @@ import { startPolling, type Poller } from './sim/poller';
 import { createRestarter } from './sim/restarter';
 import { retryUntilOk } from './sim/retry';
 import { initOptions, isClientError, type RunOptions } from './sim/run_options';
+import { mapFromUrl, urlForMap } from './sim/map_choice';
 import { defaultSettings, type SimSettings } from './ui/controls';
 import { createHud, type Hud } from './ui/hud';
 import { EMPTY_SIRENS, syncSirens, type SirenMap } from './world/siren';
@@ -85,14 +86,14 @@ function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
 const REFUSED_NOTICE_MS = 6000;
 
 function runOptions(settings: SimSettings): RunOptions {
-    return { spawnInterval: settings.spawnInterval, spawnPoints: settings.spawnPoints };
+    return { map: settings.map, spawnInterval: settings.spawnInterval, spawnPoints: settings.spawnPoints };
 }
 
 async function main(): Promise<void> {
     const hud = createHud();
     try {
         const gl = webglContext();
-        const settings = defaultSettings();
+        const settings = defaultSettings(mapFromUrl(window.location.search));
         const city = await loadCity(settings, hud);
         let poller: Poller | null = null;
 
@@ -120,7 +121,10 @@ async function main(): Promise<void> {
             },
         }, runOptions(settings));
 
-        const scene = new CityScene(gl, city, settings, { onRunOptionsChange: () => void restarter.restart() });
+        const scene = new CityScene(gl, city, settings, {
+            onRunOptionsChange: () => void restarter.restart(),
+            onMapChange: (map) => window.location.assign(urlForMap(window.location.href, map)),
+        });
         scene.setupUI();
         scene.draw(0);
         hud.clearStatus();

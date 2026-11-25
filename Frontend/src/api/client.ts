@@ -61,11 +61,12 @@ async function parsed<T>(endpoint: string, parse: (v: unknown) => T, init?: Requ
 
 // Body of POST /init; anything left out takes the server default (docs/frame-api.md).
 export interface InitOptions {
+    map?: string;
     spawnInterval?: number;
     spawnPoints?: SpawnPoints;
 }
 
-// Creates a fresh model on the server with its default map and seed.
+// Creates a fresh model on the server; options left out use its defaults.
 export async function initModel(options: InitOptions = {}): Promise<void> {
     await request('init', {
         method: 'POST',

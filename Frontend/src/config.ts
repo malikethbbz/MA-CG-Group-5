@@ -30,5 +30,12 @@ export const SPAWN_POINT_CHOICES: Readonly<Record<string, SpawnPoints>> = {
 };
 export const DEFAULT_SPAWN_POINTS: SpawnPoints = 'corners';
 
+// Maps the server can load. The original map is the assignment's and stays the default.
+export const MAP_CHOICES: Readonly<Record<string, string>> = {
+    'Original (2025)': '2025_base.txt',
+    'Reforma glorieta': '2025_reforma.txt',
+};
+export const DEFAULT_MAP = '2025_base.txt';
+
 // How long to wait before retrying a failed /init, /city or /step request.
 export const RETRY_DELAY_MS = 1500;
