@@ -11,6 +11,7 @@ import { cellBox } from './cell_box';
 import { drawItem, normalMatrix, type DrawItem } from './draw_item';
 import { PALETTE, scaleColor } from './palette';
 import { landmarkItems } from './landmarks';
+import { BUILDING_WIDTH, sidewalkItem, sidewalks, type Sidewalk } from './sidewalks';
 import { streetLampItems, streetLamps } from './street_lamps';
 
 const ROAD_THICKNESS = 0.04;
@@ -35,6 +36,8 @@ export interface LightLamp {
 export interface CityLayout {
     readonly statics: readonly DrawItem[];
     readonly lamps: readonly LightLamp[];
+    // Sidewalk strips, where the pedestrians walk
+    readonly walks: readonly Sidewalk[];
     // World-space centre of the map, for framing the camera
     readonly center: readonly [number, number, number];
     readonly extent: number;
@@ -78,17 +81,17 @@ function crown(cell: GridCell, height: number, noise: number): DrawItem[] {
     }
     const color = noise < CROWN_SHARE / 2 ? PALETTE.crownPink : PALETTE.crownCyan;
     const base = (height - CROWN_DROP) * CELL_SIZE;
-    return [drawItem('box', cellBox(cell, base, [0.9, CROWN_HEIGHT, 0.9]), color, 1)];
+    return [drawItem('box', cellBox(cell, base, [BUILDING_WIDTH + 0.04, CROWN_HEIGHT, BUILDING_WIDTH + 0.04]), color, 1)];
 }
 
 function building(cell: GridCell): DrawItem[] {
     const height = buildingHeight(cell.x, cell.z);
     const noise = cellNoise(cell.z, cell.x);
     const color: Color = PALETTE.buildings[Math.floor(noise * PALETTE.buildings.length)];
-    const walls = { ...drawItem('box', cellBox(cell, 0, [0.86, height, 0.86]), color), windowSeed: noise * 997 };
+    const walls = { ...drawItem('box', cellBox(cell, 0, [BUILDING_WIDTH, height, BUILDING_WIDTH]), color), windowSeed: noise * 997 };
     return [
         walls,
-        drawItem('box', cellBox(cell, height * CELL_SIZE, [0.8, 0.02, 0.8]), scaleColor(color, PALETTE.roofLift)),
+        drawItem('box', cellBox(cell, height * CELL_SIZE, [BUILDING_WIDTH - 0.06, 0.02, BUILDING_WIDTH - 0.06]), scaleColor(color, PALETTE.roofLift)),
         ...crown(cell, height, cellNoise(cell.x + 101, cell.z + 57)),
     ];
 }
@@ -129,12 +132,15 @@ export function buildCityLayout(city: CityData): CityLayout {
     for (const target of city.destinations) {
         statics.push(...destination(target));
     }
+    const walks = sidewalks(city);
+    statics.push(...walks.map(sidewalkItem));
     for (const lamp of streetLamps(city)) {
         statics.push(...streetLampItems(lamp));
     }
     return {
         statics,
         lamps,
+        walks,
         center: [((city.width - 1) / 2) * CELL_SIZE, 0, ((city.height - 1) / 2) * CELL_SIZE],
         extent: Math.max(city.width, city.height) * CELL_SIZE,
     };

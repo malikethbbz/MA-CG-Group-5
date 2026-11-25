@@ -1,7 +1,6 @@
 /*
- * Neon street lamps, visual only. A lamp stands on the strip between a building and
- * the road (the edge of an obstacle cell that faces a road), at a regular,
- * deterministic spacing, so it never stands on a lane or in a car's way.
+ * Neon street lamps, visual only. A lamp stands on a sidewalk (sidewalks.ts) at a
+ * regular, deterministic spacing, so it never stands on a lane or in a car's way.
  */
 
 import type { Color } from '../../libs/color';
@@ -10,12 +9,13 @@ import { CELL_SIZE } from '../config';
 import { cellBox } from './cell_box';
 import { drawItem, type DrawItem } from './draw_item';
 import { PALETTE, scaleColor } from './palette';
+import { sidewalks, type Side } from './sidewalks';
 
 // One lamp per LAMP_SPACING diagonals of building cells
 export const LAMP_SPACING = 2;
-// How far the pole sits from its building cell's centre, toward the road (cells).
-// The building is 0.86 wide, so 0.46 is just outside its wall and inside the cell.
-export const POLE_OFFSET = 0.46;
+// How far the pole sits from its building cell's centre, toward the road (cells):
+// on the outer half of the sidewalk, past where pedestrians walk.
+export const POLE_OFFSET = 0.47;
 const POLE_HEIGHT = 1.0;
 const POLE_WIDTH = 0.03;
 const HEAD_SIZE: readonly [number, number, number] = [0.15, 0.07, 0.15];
@@ -27,36 +27,24 @@ const POOL_STRENGTH = 0.5;
 export interface StreetLamp {
     readonly cell: GridCell;
     // Unit grid step from the lamp's building cell to the road it lights
-    readonly side: readonly [number, number];
+    readonly side: Side;
     readonly color: Color;
 }
 
-// Checked in this order, so a corner building always picks the same road.
-const SIDES: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-const key = (x: number, z: number): string => `${x},${z}`;
-
-// Only plain road cells count: traffic-light cells are listed apart in /city and
-// already have a pole of their own.
-function lampSide(cell: GridCell, roads: ReadonlySet<string>): readonly [number, number] | null {
-    return SIDES.find((side) => roads.has(key(cell.x + side[0], cell.z + side[1]))) ?? null;
-}
-
+// One lamp per building cell on the spacing, on its first sidewalk.
 export function streetLamps(city: CityData): StreetLamp[] {
-    const roads = new Set(city.roads.map((road) => key(road.x, road.z)));
-    const landmarks = new Set(city.landmarks.map((landmark) => key(landmark.x, landmark.z)));
+    const lit = new Set<string>();
     const lamps: StreetLamp[] = [];
-    for (const cell of city.obstacles) {
-        if ((cell.x + cell.z) % LAMP_SPACING !== 0 || landmarks.has(key(cell.x, cell.z))) {
+    for (const { cell, side } of sidewalks(city)) {
+        const id = `${cell.x},${cell.z}`;
+        if ((cell.x + cell.z) % LAMP_SPACING !== 0 || lit.has(id)) {
             continue;
         }
-        const side = lampSide(cell, roads);
-        if (side) {
-            const color = ((cell.x + cell.z) / LAMP_SPACING) % 2 === 0 ? PALETTE.lampPink : PALETTE.lampCyan;
-            lamps.push({ cell, side, color });
-        }
+        lit.add(id);
+        const color = ((cell.x + cell.z) / LAMP_SPACING) % 2 === 0 ? PALETTE.lampPink : PALETTE.lampCyan;
+        lamps.push({ cell, side, color });
     }
-    return lamps.sort((a, b) => a.cell.x - b.cell.x || a.cell.z - b.cell.z);
+    return lamps;
 }
 
 // Pole, glowing head, and a faint pool of its light on the road beside it.

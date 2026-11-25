@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CityData, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
+import { WALL_OFFSET } from './sidewalks';
 import { LAMP_SPACING, streetLampItems, streetLamps } from './street_lamps';
 
 // A 9x9 block: a ring road around a 7x7 block of buildings, plus one traffic light
@@ -54,8 +55,8 @@ describe('streetLamps', () => {
                 const inside = Math.abs(px - lane.x) < 0.5 && Math.abs(pz - lane.z) < 0.5;
                 expect(inside, `pole at (${px}, ${pz}) is on road ${key(lane.x, lane.z)}`).toBe(false);
             }
-            // ...and outside the building's 0.86-wide footprint
-            expect(Math.max(Math.abs(px - lamp.cell.x), Math.abs(pz - lamp.cell.z))).toBeGreaterThan(0.43);
+            // ...and outside the building's footprint
+            expect(Math.max(Math.abs(px - lamp.cell.x), Math.abs(pz - lamp.cell.z))).toBeGreaterThan(WALL_OFFSET);
         }
     });
 

@@ -13,6 +13,7 @@ export function hex(code: string): Color {
 export const PALETTE = {
     ground: hex('#120c2e'),
     road: hex('#1d1840'),
+    sidewalk: hex('#3a2f6e'),
     buildings: [hex('#1d1a5c'), hex('#241a66'), hex('#16225e'), hex('#2b1a5a')],
     // Roofs only a shade lighter than the walls, so the top view is not a sea of purple
     roofLift: 1.18,

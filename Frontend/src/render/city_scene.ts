@@ -12,6 +12,8 @@ import { buildCityLayout, type CityLayout } from '../world/city_layout';
 import type { DrawItem } from '../world/draw_item';
 import { frameAlpha } from '../world/interpolation';
 import { lampColor, PALETTE, SKY } from '../world/palette';
+import { PedestrianCrowd } from '../world/pedestrian_crowd';
+import { spawnWalkers } from '../world/pedestrians';
 import { STAR_COUNT } from '../world/sky';
 import { vehiclesDrawItems } from '../world/vehicle_items';
 import { EMPTY_VEHICLES, type VehicleMap } from '../world/vehicle_sync';
@@ -46,6 +48,7 @@ export class CityScene extends Scene {
     private readonly audio = new SirenAudio();
     private readonly layout: CityLayout;
     private readonly view: CityCamera;
+    private readonly crowd: PedestrianCrowd;
     private vehicles: VehicleMap = EMPTY_VEHICLES;
     private sirens: SirenMap = EMPTY_SIRENS;
     private lightGreen: ReadonlyMap<string, boolean> = new Map();
@@ -59,6 +62,7 @@ export class CityScene extends Scene {
         this.settings = settings;
         this.handlers = handlers;
         this.layout = buildCityLayout(city);
+        this.crowd = new PedestrianCrowd(spawnWalkers(this.layout.walks));
         this.addObject('sky', 'sky', screenTriangleArrays(), SKY.horizon);
         this.addObject('box', 'flat', boxArrays(), PALETTE.road);
         this.addObject('wheel', 'flat', wheelArrays(), PALETTE.wheel);
@@ -118,6 +122,10 @@ export class CityScene extends Scene {
             this.drawItem(item, viewProjection);
         }
         for (const item of this.lampItems()) {
+            this.drawItem(item, viewProjection);
+        }
+        this.crowd.update(now);
+        for (const item of this.crowd.items) {
             this.drawItem(item, viewProjection);
         }
         for (const item of vehiclesDrawItems(this.vehicles, alpha, this.sirens, now)) {
