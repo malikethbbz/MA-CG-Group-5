@@ -13,7 +13,7 @@ export interface Star {
 }
 
 export const STAR_COUNT = 120;
-export const STAR_SEED = 2008;
+const STAR_SEED = 2008;
 // Stars stay in the upper sky, above the pink horizon haze.
 export const STAR_MIN_ELEVATION = 0.12;
 export const STAR_MAX_ELEVATION = 1.2;

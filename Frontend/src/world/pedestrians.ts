@@ -11,10 +11,10 @@ import { seededRandom } from './sky';
 import { alongStrip, WALL_OFFSET, type Sidewalk } from './sidewalks';
 
 export const PEDESTRIAN_COUNT = 150;
-export const PEDESTRIAN_SEED = 77;
+const PEDESTRIAN_SEED = 77;
 // Distance from the building cell's centre to the walking line, in cells: just
 // outside the wall, inside the street lamps
-export const WALK_OFFSET = WALL_OFFSET + 0.04;
+const WALK_OFFSET = WALL_OFFSET + 0.04;
 // Half the length of the stretch a walker paces, in cells
 export const WALK_HALF_SPAN = 0.42;
 export const BOB_HEIGHT = 0.012;

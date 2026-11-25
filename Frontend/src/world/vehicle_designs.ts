@@ -77,7 +77,7 @@ export const CAR_DESIGNS: readonly CarDesign[] = [
 ];
 
 // FNV-1a: a stable 32-bit hash of the id string
-export function idHash(id: string): number {
+function idHash(id: string): number {
     let h = 0x811c9dc5;
     for (let i = 0; i < id.length; i++) {
         h = Math.imul(h ^ id.charCodeAt(i), 0x01000193) >>> 0;

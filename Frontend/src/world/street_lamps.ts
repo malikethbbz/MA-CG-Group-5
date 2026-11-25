@@ -16,7 +16,7 @@ import { sidewalks, type Side } from './sidewalks';
 export const LAMP_SPACING = 1;
 // How far the pole sits from its building cell's centre, toward the road (cells):
 // on the outer half of the sidewalk, past where pedestrians walk.
-export const POLE_OFFSET = 0.47;
+const POLE_OFFSET = 0.47;
 const POLE_HEIGHT = 1.0;
 const POLE_WIDTH = 0.03;
 const HEAD_SIZE: readonly [number, number, number] = [0.15, 0.07, 0.15];
