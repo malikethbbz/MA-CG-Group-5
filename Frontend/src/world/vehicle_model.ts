@@ -16,8 +16,9 @@ import type { Pose } from './interpolation';
 
 export type Triple = readonly [number, number, number];
 
-// How a part is colored: the kind's body color, the dark glass/rider color, or a light.
-export type Paint = 'body' | 'dark' | 'accent';
+// How a part is colored: the vehicle's body color, the dark glass/rider color, a
+// headlight, or a glowing roof sign.
+export type Paint = 'body' | 'dark' | 'accent' | 'sign';
 
 export interface PartSpec {
     readonly paint: Paint;

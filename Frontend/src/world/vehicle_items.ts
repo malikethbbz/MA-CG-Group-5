@@ -6,10 +6,10 @@
 import type { Color } from '../../libs/color';
 import { drawItem, type DrawItem } from './draw_item';
 import type { Pose } from './interpolation';
-import { PALETTE, scaleColor, vehicleColor } from './palette';
+import { PALETTE, scaleColor } from './palette';
 import { EMPTY_SIRENS, flashOffsetMs, sirenLevels, sirenSpec, type SirenMap } from './siren';
 import { lightBarMatrices, vehicleMatrices, type Paint, type VehicleSpec } from './vehicle_model';
-import { vehicleSpec } from './vehicle_specs';
+import { vehicleLook } from './vehicle_designs';
 import { travelledDistance, vehiclePose, type TrackedVehicle, type VehicleMap } from './vehicle_sync';
 
 // An unlit bar lamp keeps a hint of its color
@@ -20,14 +20,16 @@ interface Finish {
     readonly emissive: number;
 }
 
-function finish(paint: Paint, kind: string): Finish {
+function finish(paint: Paint, bodyColor: Color): Finish {
     switch (paint) {
         case 'body':
-            return { color: vehicleColor(kind), emissive: 0.35 };
+            return { color: bodyColor, emissive: 0.35 };
         case 'dark':
             return { color: PALETTE.cabin, emissive: 0 };
         case 'accent':
             return { color: PALETTE.headlight, emissive: 1 };
+        case 'sign':
+            return { color: PALETTE.taxiSign, emissive: 1 };
     }
 }
 
@@ -46,11 +48,11 @@ function lightBarItems(vehicle: TrackedVehicle, spec: VehicleSpec, pose: Pose, s
 }
 
 function vehicleItems(vehicle: TrackedVehicle, alpha: number, sirens: SirenMap, timeMs: number): DrawItem[] {
-    const spec = vehicleSpec(vehicle.kind);
+    const { spec, color: bodyColor } = vehicleLook(vehicle.kind, vehicle.id);
     const pose = vehiclePose(vehicle, alpha);
     const matrices = vehicleMatrices(spec, pose, travelledDistance(vehicle, alpha));
     const parts = spec.parts.map((part, i) => {
-        const { color, emissive } = finish(part.paint, vehicle.kind);
+        const { color, emissive } = finish(part.paint, bodyColor);
         return drawItem('box', matrices.parts[i], color, emissive);
     });
     return [

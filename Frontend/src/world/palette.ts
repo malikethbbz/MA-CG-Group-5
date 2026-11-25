@@ -31,6 +31,7 @@ export const PALETTE = {
     wheel: hex('#d8d8e8'),
     cabin: hex('#0a0a14'),
     headlight: hex('#fff6d6'),
+    taxiSign: hex('#fff35c'),
     unknownVehicle: hex('#f5ff3b'),
 };
 
