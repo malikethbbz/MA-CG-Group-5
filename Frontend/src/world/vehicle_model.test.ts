@@ -77,6 +77,42 @@ describe('vehicle draw items', () => {
     });
 });
 
+// World-space corners of every drawn part (unit boxes and unit wheels) of the vehicles
+function corners(vehicles: VehicleMap): number[][] {
+    const signs = [-1, 1];
+    return vehiclesDrawItems(vehicles, 0).flatMap((item) => {
+        const half: [number, number, number] = item.shape === 'wheel' ? [0.5, 1, 1] : [0.5, 0.5, 0.5];
+        return signs.flatMap((sx) => signs.flatMap((sy) => signs.map((sz) =>
+            point(item.world, sx * half[0], sy * half[1], sz * half[2]))));
+    });
+}
+
+const span = (values: number[]): number => Math.max(...values) - Math.min(...values);
+
+describe('vehicle footprint fits its lane', () => {
+    for (const kind of ['car', 'motorcycle', 'ambulance']) {
+        it(`keeps a ${kind} under half a cell wide and inside its cell lengthwise`, () => {
+            // Heading +z: x is across the lane, z along it
+            const points = corners(moved(kind, [4, 4], [4, 4]));
+            expect(span(points.map((p) => p[0]))).toBeLessThan(0.5 * CELL_SIZE);
+            expect(span(points.map((p) => p[2]))).toBeLessThan(0.7 * CELL_SIZE);
+        });
+    }
+
+    it('makes motorcycles narrower than cars', () => {
+        const width = (kind: string) => span(corners(moved(kind, [0, 0], [0, 0])).map((p) => p[0]));
+        expect(width('motorcycle')).toBeLessThan(0.2 * CELL_SIZE);
+        expect(width('motorcycle')).toBeLessThan(width('car'));
+    });
+
+    it('leaves a gap between two cars in adjacent lanes, even mid-diagonal', () => {
+        // Both turned 45 degrees, side by side on cells (0, 0) and (1, 0)
+        const a = corners(moved('car', [0, 0], [0, 0], 1, 1)).map((p) => p[0]);
+        const b = corners(moved('car', [1, 0], [1, 0], 1, 1)).map((p) => p[0]);
+        expect(Math.min(...b) - Math.max(...a)).toBeGreaterThan(0.1 * CELL_SIZE);
+    });
+});
+
 describe('motorcycle through the shared hierarchy', () => {
     it('has two wheels, front and rear, on the centre line of its heading', () => {
         // Riding diagonally from (3, 4): the centre line is (3, 4) + t * (1, 1) / sqrt 2

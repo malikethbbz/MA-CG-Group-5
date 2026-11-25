@@ -6,22 +6,26 @@
 import { CELL_SIZE } from '../config';
 import type { Triple, VehicleSpec } from './vehicle_model';
 
-// Vehicles are drawn a bit larger than true scale so they read at the default zoom.
-const K = 1.2 * CELL_SIZE;
+// Every vehicle fits inside its lane cell with road showing around it: the footprint
+// stays under half a cell wide, so two cars in adjacent lanes never touch, even
+// mid-diagonal. Wheels sit flush with the body sides instead of sticking out.
+const K = CELL_SIZE;
 
 function car(): VehicleSpec {
-    const wheelRadius = 0.11 * K;
-    const wheelWidth = 0.08 * K;
-    const body: Triple = [0.42 * K, 0.2 * K, 0.72 * K];
-    const cabin: Triple = [0.34 * K, 0.14 * K, 0.36 * K];
-    const bodyLift = wheelRadius + 0.5 * body[1];
+    const wheelRadius = 0.085 * K;
+    const wheelWidth = 0.06 * K;
+    const body: Triple = [0.35 * K, 0.15 * K, 0.6 * K];
+    const cabin: Triple = [0.28 * K, 0.11 * K, 0.3 * K];
+    // The body hangs over the upper part of the wheels
+    const bodyLift = 0.6 * wheelRadius + 0.5 * body[1];
     const cabinLift = bodyLift + 0.5 * (body[1] + cabin[1]);
-    const axleX = 0.5 * body[0] + 0.5 * wheelWidth;
-    const axleZ = 0.25 * K;
+    const axleX = 0.5 * (body[0] - wheelWidth);
+    const axleZ = 0.2 * K;
     return {
         parts: [
             { paint: 'body', size: body, offset: [0, bodyLift, 0] },
-            { paint: 'dark', size: cabin, offset: [0, cabinLift, 0] },
+            { paint: 'dark', size: cabin, offset: [0, cabinLift, -0.03 * K] },
+            { paint: 'accent', size: [0.26 * K, 0.03 * K, 0.01 * K], offset: [0, bodyLift, 0.5 * body[2]] },
         ],
         wheelRadius,
         wheelWidth,
@@ -37,20 +41,20 @@ function car(): VehicleSpec {
 }
 
 function motorcycle(): VehicleSpec {
-    const wheelRadius = 0.1 * K;
-    const wheelWidth = 0.05 * K;
-    const axleZ = 0.22 * K;
-    const body: Triple = [0.1 * K, 0.1 * K, 0.5 * K];
-    const bodyLift = wheelRadius + 0.02 * K;
-    const torso: Triple = [0.16 * K, 0.2 * K, 0.12 * K];
+    const wheelRadius = 0.075 * K;
+    const wheelWidth = 0.04 * K;
+    const axleZ = 0.16 * K;
+    const body: Triple = [0.08 * K, 0.08 * K, 0.45 * K];
+    const bodyLift = wheelRadius + 0.01 * K;
+    const torso: Triple = [0.13 * K, 0.16 * K, 0.1 * K];
     const torsoLift = bodyLift + 0.5 * (body[1] + torso[1]);
-    const helmet: Triple = [0.11 * K, 0.1 * K, 0.11 * K];
+    const helmet: Triple = [0.09 * K, 0.08 * K, 0.09 * K];
     return {
         parts: [
             { paint: 'body', size: body, offset: [0, bodyLift, 0] },
-            { paint: 'dark', size: torso, offset: [0, torsoLift, -0.04 * K] },
+            { paint: 'dark', size: torso, offset: [0, torsoLift, -0.03 * K] },
             { paint: 'body', size: helmet, offset: [0, torsoLift + 0.5 * (torso[1] + helmet[1]), -0.02 * K] },
-            { paint: 'accent', size: [0.08 * K, 0.04 * K, 0.02 * K], offset: [0, bodyLift + 0.04 * K, 0.26 * K] },
+            { paint: 'accent', size: [0.06 * K, 0.03 * K, 0.01 * K], offset: [0, bodyLift + 0.03 * K, 0.5 * body[2]] },
         ],
         wheelRadius,
         wheelWidth,

@@ -5,7 +5,6 @@
 
 import * as twgl from 'twgl-base.js';
 import { M4, type Mat4 } from '../../libs/3d-lib';
-import { Camera3D } from '../../libs/camera3d';
 import { Scene } from '../../libs/scene_multi_shader';
 import type { CityData, LightState } from '../api/contract';
 import { CELL_SIZE } from '../config';
@@ -21,6 +20,7 @@ import { SirenAudio } from '../audio/siren_audio';
 import { activeSirenSources, sirenGains } from '../audio/siren_mix';
 import { EMPTY_SIRENS, type SirenMap } from '../world/siren';
 import { fogUniforms, skyUniforms, withDefines } from './atmosphere';
+import { CityCamera } from './city_camera';
 import { boxArrays, screenTriangleArrays, wheelArrays } from './geometry';
 import vsFlatGLSL from '../../assets/shaders/vs_flat.glsl?raw';
 import fsFlatGLSL from '../../assets/shaders/fs_flat.glsl?raw';
@@ -32,10 +32,10 @@ const LIGHT_DIRECTION = [-0.4, -1, -0.6];
 const LIGHT_COLOR = [0.95, 0.72, 0.9];
 const AMBIENT = [0.36, 0.28, 0.55, 1];
 const CAMERA_AZIMUTH = 0.6;
-const CAMERA_ELEVATION = 0.3;
+const CAMERA_ELEVATION = 0.38;
 // Looking at a point above the ground lifts the horizon into view, so the sky shows
-const CAMERA_TARGET_LIFT = 3;
-const CAMERA_DISTANCE_FACTOR = 0.8;
+const CAMERA_TARGET_LIFT = 2;
+const CAMERA_DISTANCE_FACTOR = 0.55;
 
 // What the page provides; the scene handles the sound toggle itself.
 export type SceneHandlers = Omit<ControlHandlers, 'onSoundChange'>;
@@ -45,7 +45,7 @@ export class CityScene extends Scene {
     private readonly handlers: SceneHandlers;
     private readonly audio = new SirenAudio();
     private readonly layout: CityLayout;
-    private readonly view: Camera3D;
+    private readonly view: CityCamera;
     private vehicles: VehicleMap = EMPTY_VEHICLES;
     private sirens: SirenMap = EMPTY_SIRENS;
     private lightGreen: ReadonlyMap<string, boolean> = new Map();
@@ -65,8 +65,8 @@ export class CityScene extends Scene {
 
         const [cx, cy, cz] = this.layout.center;
         const target = [cx, cy + CAMERA_TARGET_LIFT * CELL_SIZE, cz];
-        this.view = new Camera3D(0, this.layout.extent * CAMERA_DISTANCE_FACTOR,
-            CAMERA_AZIMUTH, CAMERA_ELEVATION, target, target);
+        this.view = new CityCamera(this.layout.extent * CAMERA_DISTANCE_FACTOR,
+            CAMERA_AZIMUTH, CAMERA_ELEVATION, target, this.layout.extent);
         this.view.setupControls();
     }
 
