@@ -22,12 +22,14 @@ export const PALETTE = {
     lightRed: hex('#ff2a4d'),
     wheel: hex('#d8d8e8'),
     cabin: hex('#0a0a14'),
+    headlight: hex('#fff6d6'),
     unknownVehicle: hex('#f5ff3b'),
 };
 
 // Body color per vehicle kind; kinds the server adds later only need a row here.
 const VEHICLE_COLORS: Readonly<Record<string, Color>> = {
     car: hex('#00f0ff'),
+    motorcycle: hex('#b6ff1a'),
     ambulance: hex('#f4f4ff'),
     police: hex('#3d5afe'),
     rogue: hex('#ff9100'),

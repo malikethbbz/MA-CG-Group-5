@@ -35,7 +35,7 @@ export interface Heading {
     z: number;
 }
 
-// `kind` is "car" today; "ambulance", "police", "rogue" and "swat" come later.
+// `kind` is "car", "motorcycle" or "ambulance"; "police", "rogue" and "swat" come later.
 export interface VehicleFrame {
     id: string;
     kind: string;

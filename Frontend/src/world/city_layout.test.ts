@@ -58,7 +58,7 @@ describe('palette lookups', () => {
     });
 
     it('colors known kinds distinctly and falls back for unknown ones', () => {
-        const kinds = ['car', 'ambulance', 'police', 'rogue', 'swat'];
+        const kinds = ['car', 'motorcycle', 'ambulance', 'police', 'rogue', 'swat'];
         const colors = new Set(kinds.map((kind) => vehicleColor(kind).join()));
         expect(colors.size).toBe(kinds.length);
         expect(vehicleColor('hovercraft')).toBe(PALETTE.unknownVehicle);
