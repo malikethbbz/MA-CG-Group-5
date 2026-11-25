@@ -88,8 +88,8 @@ then `S` lights for the next 15, so crossing streets are never green at the same
 
 | Endpoint | Method | Returns |
 |----------|--------|---------|
-| `/init` | GET, POST | Creates the model. POST body: `{"map": "2025_base.txt", "seed": 42}` (both optional) |
-| `/city` | GET | Static map: size, roads, obstacles, destinations, lights (with `direction`) and helipads. See [`docs/frame-api.md`](docs/frame-api.md) |
+| `/init` | GET, POST | Creates the model. POST body, every field optional: `{"map": "2025_base.txt", "seed": 42, "spawnInterval": 10, "spawnPoints": "corners"}`. See [`docs/frame-api.md`](docs/frame-api.md) |
+| `/city` | GET | Static map: size, roads, obstacles, destinations, lights (with `direction`), helipads and landmarks. See [`docs/frame-api.md`](docs/frame-api.md) |
 | `/step` | GET | Advances one step while running and returns the frame: stats, light colors, vehicles and this step's events. See [`docs/frame-api.md`](docs/frame-api.md) |
 | `/update` | GET | Deprecated: use `/step`. Advances one step while the simulation is running |
 | `/getAgents` | GET | Deprecated: use `/step`. Cars: `id`, `x`, `y`, `z`, `heading` |

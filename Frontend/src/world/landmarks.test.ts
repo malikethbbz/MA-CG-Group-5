@@ -63,7 +63,7 @@ describe('landmarks in the city layout', () => {
     });
 
     it('keeps street lamps off the monument island', () => {
-        // (1, 1) is on the lamp spacing and faces the road at (0, 1)
+        // (1, 1) faces the road at (0, 1)
         expect(streetLamps({ ...city, landmarks: [] }).map((l) => l.cell)).toContainEqual({ x: 1, z: 1 });
         expect(streetLamps(city).map((l) => l.cell)).not.toContainEqual({ x: 1, z: 1 });
     });

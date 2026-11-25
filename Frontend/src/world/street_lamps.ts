@@ -1,6 +1,6 @@
 /*
- * Neon street lamps, visual only. A lamp stands on a sidewalk (sidewalks.ts) at a
- * regular, deterministic spacing, so it never stands on a lane or in a car's way.
+ * Neon street lamps, visual only. Every building that faces a road has one, on its
+ * sidewalk (sidewalks.ts), so a lamp never stands on a lane or in a car's way.
  */
 
 import type { Color } from '../../libs/color';
@@ -11,9 +11,6 @@ import { drawItem, type DrawItem } from './draw_item';
 import { PALETTE, scaleColor } from './palette';
 import { sidewalks, type Side } from './sidewalks';
 
-// One lamp per LAMP_SPACING diagonals of building cells: 1 lights every building
-// that faces a road, so the streets read as lit at night
-export const LAMP_SPACING = 1;
 // How far the pole sits from its building cell's centre, toward the road (cells):
 // on the outer half of the sidewalk, past where pedestrians walk.
 const POLE_OFFSET = 0.47;
@@ -32,13 +29,13 @@ export interface StreetLamp {
     readonly color: Color;
 }
 
-// One lamp per building cell on the spacing, on its first sidewalk.
+// One lamp per building cell, on its first sidewalk.
 export function streetLamps(city: CityData): StreetLamp[] {
     const lit = new Set<string>();
     const lamps: StreetLamp[] = [];
     for (const { cell, side } of sidewalks(city)) {
         const id = `${cell.x},${cell.z}`;
-        if ((cell.x + cell.z) % LAMP_SPACING !== 0 || lit.has(id)) {
+        if (lit.has(id)) {
             continue;
         }
         lit.add(id);

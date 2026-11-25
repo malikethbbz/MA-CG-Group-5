@@ -50,13 +50,13 @@ describe('roadMarkings', () => {
         expect(marks.get('0,4')?.stopLine).toBe(false);
     });
 
-    it('marks every lane of the real Reforma ring with its way round', () => {
+    it('marks every road and light of the real Reforma map, with arrows on the ring', () => {
         const reforma = cityFromMap('2025_reforma.txt');
         const marks = roadMarkings(reforma);
         expect(marks.size).toBe(reforma.roads.length + reforma.lights.length);
         const stops = [...marks.values()].filter((m) => m.stopLine);
         expect(stops).toHaveLength(reforma.lights.length);
-        // Ring cells are the lanes around the island (x 13..17, z 19..21)
+        // The ring's bounding box: two lanes around the island at x 13..17, z 19..21
         const ringArrows = [...marks.entries()].filter(([id, m]) => {
             const [x, z] = id.split(',').map(Number);
             return m.arrow && x >= 11 && x <= 19 && z >= 17 && z <= 23;

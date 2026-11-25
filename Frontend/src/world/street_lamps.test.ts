@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CityData, GridCell } from '../api/contract';
 import { CELL_SIZE } from '../config';
 import { sidewalks, WALL_OFFSET } from './sidewalks';
-import { LAMP_SPACING, streetLampItems, streetLamps } from './street_lamps';
+import { streetLampItems, streetLamps } from './street_lamps';
 
 // A 9x9 block: a ring road around a 7x7 block of buildings, plus one traffic light
 // on the ring. Every building on the block's edge touches a road.
@@ -35,11 +35,10 @@ describe('streetLamps', () => {
         expect(streetLamps(city).length).toBeGreaterThan(4);
     });
 
-    it('only uses building cells on the regular spacing, each facing a road', () => {
+    it('puts each lamp on a building cell that faces a road', () => {
         const city = ringCity();
         const roads = new Set(city.roads.map((r) => key(r.x, r.z)));
         for (const lamp of streetLamps(city)) {
-            expect((lamp.cell.x + lamp.cell.z) % LAMP_SPACING).toBe(0);
             expect(roads.has(key(lamp.cell.x, lamp.cell.z))).toBe(false);
             expect(roads.has(key(lamp.cell.x + lamp.side[0], lamp.cell.z + lamp.side[1]))).toBe(true);
         }
@@ -69,7 +68,7 @@ describe('streetLamps', () => {
     });
 
     it('leaves the curb next to a traffic light to the light', () => {
-        // Building (5, 1) is on the spacing and its only road neighbour is the light (5, 0)
+        // Building (5, 1)'s only road neighbour is the light (5, 0)
         const city = ringCity();
         const atBuilding = (c: CityData) => streetLamps(c).filter((l) => l.cell.x === 5 && l.cell.z === 1);
         expect(atBuilding(city)).toEqual([]);
