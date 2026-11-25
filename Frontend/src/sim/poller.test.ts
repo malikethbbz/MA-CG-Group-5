@@ -80,4 +80,19 @@ describe('startPolling', () => {
         await flush();
         expect(queue.map((q) => q.delay)).toEqual([1200]);
     });
+
+    it('drops a response that arrives after stop, so a replaced run draws nothing', async () => {
+        let resolve: (f: StepFrame) => void = () => undefined;
+        const fetchStep = vi.fn(() => new Promise<StepFrame>((r) => { resolve = r; }));
+        const { schedule, queue } = manualSchedule();
+        const onFrame = vi.fn();
+        const poller = startPolling({ fetchStep, intervalMs: () => 400, retryDelayMs: 900, schedule,
+            onFrame, onError: () => undefined, onFinished: () => undefined });
+        await flush();
+        poller.stop();
+        resolve(frame(1, true));
+        await flush();
+        expect(onFrame).not.toHaveBeenCalled();
+        expect(queue).toHaveLength(0);
+    });
 });

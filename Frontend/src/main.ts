@@ -1,5 +1,6 @@
 /*
  * Entry point: /init -> /city -> poll /step, drawing the city with WebGL.
+ * Changing the traffic density re-inits the model and keeps the city on screen.
  * Requires Backend/city_server.py running on http://localhost:8585/.
  */
 
@@ -7,9 +8,9 @@ import { fetchCity, fetchStep, initModel } from './api/client';
 import type { CityData, StepFrame } from './api/contract';
 import { RETRY_DELAY_MS } from './config';
 import { CityScene } from './render/city_scene';
-import { startPolling } from './sim/poller';
+import { startPolling, type Poller } from './sim/poller';
 import { retryUntilOk } from './sim/retry';
-import { defaultSettings } from './ui/controls';
+import { defaultSettings, type SimSettings } from './ui/controls';
 import { createHud, type Hud } from './ui/hud';
 import { EMPTY_VEHICLES, syncVehicles, type VehicleMap } from './world/vehicle_sync';
 
@@ -29,14 +30,22 @@ function webglContext(): WebGL2RenderingContext {
     return gl;
 }
 
-async function loadCity(hud: Hud): Promise<CityData> {
-    const reportRetry = (error: unknown, attempt: number): void => {
+function retryReporter(hud: Hud): (error: unknown, attempt: number) => void {
+    return (error, attempt) => {
         console.error(error);
         hud.showStatus(`${errorText(error)} Retrying (attempt ${attempt})...`, 'error');
     };
+}
+
+function initWith(settings: SimSettings, hud: Hud): Promise<void> {
+    const init = () => initModel({ spawnInterval: settings.spawnInterval });
+    return retryUntilOk(init, retryReporter(hud), RETRY_DELAY_MS);
+}
+
+async function loadCity(settings: SimSettings, hud: Hud): Promise<CityData> {
     hud.showStatus('Connecting to the simulation server...', 'info');
-    await retryUntilOk(initModel, reportRetry, RETRY_DELAY_MS);
-    return retryUntilOk(fetchCity, reportRetry, RETRY_DELAY_MS);
+    await initWith(settings, hud);
+    return retryUntilOk(fetchCity, retryReporter(hud), RETRY_DELAY_MS);
 }
 
 function finishedMessage(frame: StepFrame): string {
@@ -44,34 +53,60 @@ function finishedMessage(frame: StepFrame): string {
     return `Simulation finished at step ${frame.step}${reason}.`;
 }
 
+// One /step polling run; a traffic change stops it and starts a new one.
+function pollRun(scene: CityScene, settings: SimSettings, hud: Hud): Poller {
+    let vehicles: VehicleMap = EMPTY_VEHICLES;
+    scene.showFrame(vehicles, [], performance.now());
+    return startPolling({
+        fetchStep,
+        intervalMs: () => settings.stepIntervalMs,
+        retryDelayMs: RETRY_DELAY_MS,
+        onFrame: (frame) => {
+            vehicles = syncVehicles(vehicles, frame.vehicles).vehicles;
+            scene.showFrame(vehicles, frame.lights, performance.now());
+            hud.showStats(frame.stats);
+            hud.clearStatus();
+        },
+        onError: (error) => {
+            console.error(error);
+            hud.showStatus(`${errorText(error)} Retrying...`, 'error');
+        },
+        onFinished: (frame) => hud.showStatus(finishedMessage(frame), 'done'),
+    });
+}
+
 async function main(): Promise<void> {
     const hud = createHud();
     try {
         const gl = webglContext();
-        const city = await loadCity(hud);
         const settings = defaultSettings();
-        const scene = new CityScene(gl, city, settings);
+        const city = await loadCity(settings, hud);
+        let poller: Poller | null = null;
+        let latestRequest = 0;
+        let restarts = Promise.resolve();
+
+        // Restarts run one after another so /init calls never race; only the
+        // latest request starts polling.
+        const restart = (): void => {
+            const request = ++latestRequest;
+            poller?.stop();
+            hud.showStatus('Restarting the simulation with the new traffic...', 'info');
+            restarts = restarts.then(async () => {
+                if (request !== latestRequest) {
+                    return;
+                }
+                await initWith(settings, hud);
+                if (request === latestRequest) {
+                    poller = pollRun(scene, settings, hud);
+                }
+            });
+        };
+
+        const scene = new CityScene(gl, city, settings, { onTrafficChange: restart });
         scene.setupUI();
         scene.draw(0);
         hud.clearStatus();
-
-        let vehicles: VehicleMap = EMPTY_VEHICLES;
-        startPolling({
-            fetchStep,
-            intervalMs: () => settings.stepIntervalMs,
-            retryDelayMs: RETRY_DELAY_MS,
-            onFrame: (frame) => {
-                vehicles = syncVehicles(vehicles, frame.vehicles).vehicles;
-                scene.showFrame(vehicles, frame.lights, performance.now());
-                hud.showStats(frame.stats);
-                hud.clearStatus();
-            },
-            onError: (error) => {
-                console.error(error);
-                hud.showStatus(`${errorText(error)} Retrying...`, 'error');
-            },
-            onFinished: (frame) => hud.showStatus(finishedMessage(frame), 'done'),
-        });
+        poller = pollRun(scene, settings, hud);
     } catch (error) {
         console.error(error);
         hud.showStatus(errorText(error), 'error');

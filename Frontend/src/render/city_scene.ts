@@ -14,7 +14,7 @@ import { frameAlpha } from '../world/interpolation';
 import { lampColor, PALETTE } from '../world/palette';
 import { vehiclesDrawItems } from '../world/vehicle_items';
 import { EMPTY_VEHICLES, type VehicleMap } from '../world/vehicle_sync';
-import { createControls, type SimSettings } from '../ui/controls';
+import { createControls, type ControlHandlers, type SimSettings } from '../ui/controls';
 import { boxArrays, wheelArrays } from './geometry';
 import vsFlatGLSL from '../../assets/shaders/vs_flat.glsl?raw';
 import fsFlatGLSL from '../../assets/shaders/fs_flat.glsl?raw';
@@ -27,15 +27,17 @@ const CAMERA_DISTANCE_FACTOR = 1.05;
 
 export class CityScene extends Scene {
     private readonly settings: SimSettings;
+    private readonly handlers: ControlHandlers;
     private readonly layout: CityLayout;
     private readonly view: Camera3D;
     private vehicles: VehicleMap = EMPTY_VEHICLES;
     private lightGreen: ReadonlyMap<string, boolean> = new Map();
     private frameReceivedAt = 0;
 
-    constructor(gl: WebGL2RenderingContext, city: CityData, settings: SimSettings) {
+    constructor(gl: WebGL2RenderingContext, city: CityData, settings: SimSettings, handlers: ControlHandlers) {
         super(gl, { flat: { vs: vsFlatGLSL, fs: fsFlatGLSL } });
         this.settings = settings;
+        this.handlers = handlers;
         this.layout = buildCityLayout(city);
         this.addObject('box', 'flat', boxArrays(), PALETTE.road);
         this.addObject('wheel', 'flat', wheelArrays(), PALETTE.wheel);
@@ -54,7 +56,7 @@ export class CityScene extends Scene {
     }
 
     setupUI(): void {
-        createControls(this.settings);
+        createControls(this.settings, this.handlers);
     }
 
     protected render(_deltaTime: number): void {

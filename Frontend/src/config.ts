@@ -12,5 +12,15 @@ export const DEFAULT_STEP_INTERVAL_MS = 400;
 export const MIN_STEP_INTERVAL_MS = 100;
 export const MAX_STEP_INTERVAL_MS = 2000;
 
+// Traffic presets for the GUI, as /init spawnInterval values (1..10, lower is denser).
+// 10 is the assignment's rate; 2 still flows, 1 gridlocks the map.
+export const TRAFFIC_LEVELS: Readonly<Record<string, number>> = {
+    'Normal': 10,
+    'Busy': 5,
+    'Rush hour': 3,
+    'Gridlock-ish': 2,
+};
+export const DEFAULT_SPAWN_INTERVAL = 10;
+
 // How long to wait before retrying a failed /init, /city or /step request.
 export const RETRY_DELAY_MS = 1500;
