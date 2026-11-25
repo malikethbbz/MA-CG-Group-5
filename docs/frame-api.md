@@ -6,6 +6,11 @@ The frontend draws the simulation from two endpoints. `/init` still creates the 
 (0 to 2³²−1) and `spawnInterval` (1 to 10, default 10, the assignment's rate). Lower
 intervals spawn denser traffic; 2 still flows, 1 gridlocks the 2025 map.
 
+The default map is the assignment's `2025_base.txt`. `{"map": "2025_reforma.txt"}`
+loads the same city with a Paseo de la Reforma style glorieta in the centre: a
+two-lane ring circulating counter-clockwise around an island with a monument, a
+traffic light on every approach into the ring, and extra lights along the avenue.
+
 ## `GET /city`
 
 Static map data. Call it once after `/init`.
@@ -18,13 +23,20 @@ Static map data. Call it once after `/init`.
   "obstacles":    [{"x": 3, "z": 4}],
   "destinations": [{"x": 5, "z": 7}],
   "lights":       [{"id": "12", "x": 6, "z": 2, "direction": "Up"}],
-  "helipads":     [{"x": 2, "z": 2}, {"x": 33, "z": 32}]
+  "helipads":     [{"x": 2, "z": 2}, {"x": 33, "z": 32}],
+  "landmarks":    [{"kind": "monument", "x": 15, "z": 20}]
 }
 ```
 
 Grid `(x, y)` is sent as world `(x, z)`; the frontend picks the cell size and the height
 of each mesh. `helipads` lists the two ambulance pads as `{x, z}`. Each sits on a
 building rooftop (an obstacle cell), and an ambulance rests there at `y = 1`.
+
+`landmarks` lists special cells to draw as `{kind, x, z}`. The only kind is
+`monument` (map symbol `A`): the column with the golden angel on the glorieta island.
+A monument cell is in no other list; cars never enter it and it is not a building, so
+no emergency or helipad is ever there. The list is empty on maps without one, such as
+`2025_base.txt`.
 
 ## `GET /step`
 

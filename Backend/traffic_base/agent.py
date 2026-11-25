@@ -163,6 +163,16 @@ class Obstacle(FixedAgent):
         self.cell = cell
 
 
+class Monument(FixedAgent):
+    """A landmark on a roundabout island, like Mexico City's Angel of Independence.
+    Cars never enter it, and it is not a building: no emergency opens there and no
+    helipad sits on it."""
+
+    def __init__(self, model: CityModel, cell: Cell) -> None:
+        super().__init__(model)
+        self.cell = cell
+
+
 class Road(FixedAgent):
     """A road cell and the direction traffic flows on it."""
 

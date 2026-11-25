@@ -6,7 +6,7 @@ import pytest
 from flask.testing import FlaskClient
 
 import city_server
-from conftest import TinyCity
+from conftest import REFORMA_MAP, TinyCity
 from traffic_base.city_graph import DIRECTION_VECTORS
 
 
@@ -157,6 +157,26 @@ def test_city_holds_every_cell_the_old_endpoints_report(client: FlaskClient) -> 
     assert old == {"roads": 772, "obstacles": 414, "destinations": 26, "lights": 48}
     assert (city["width"], city["height"]) == (36, 35)
     assert city["helipads"] == [{"x": 2, "z": 2}, {"x": 33, "z": 32}]
+
+
+def test_city_lists_the_reforma_monument_as_a_landmark_and_never_as_an_obstacle(
+    client: FlaskClient,
+) -> None:
+    assert client.post("/init", json={"map": REFORMA_MAP}).status_code == 200
+    city = client.get("/city").get_json()
+    # File row 14, column 15 of a 35-row map is grid (15, 35 - 14 - 1).
+    assert city["landmarks"] == [{"kind": "monument", "x": 15, "z": 20}]
+    for key in ("roads", "obstacles", "destinations", "lights"):
+        assert all((c["x"], c["z"]) != (15, 20) for c in city[key])
+    frames = [client.get("/step").get_json() for _ in range(100)]
+    on_road = [v for f in frames for v in f["vehicles"] if v["y"] == 0]
+    assert on_road
+    assert all((v["x"], v["z"]) != (15, 20) for v in on_road)
+
+
+def test_the_base_map_has_no_landmarks(client: FlaskClient) -> None:
+    client.post("/init", json={})
+    assert client.get("/city").get_json()["landmarks"] == []
 
 
 def test_each_light_points_the_way_of_the_cell_feeding_it(client: FlaskClient) -> None:

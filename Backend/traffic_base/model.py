@@ -9,7 +9,15 @@ from mesa import Model
 from mesa.agent import AgentSet
 from mesa.discrete_space import OrthogonalMooreGrid
 
-from .agent import Car, Destination, Motorcycle, Obstacle, Road, Traffic_Light
+from .agent import (
+    Car,
+    Destination,
+    Monument,
+    Motorcycle,
+    Obstacle,
+    Road,
+    Traffic_Light,
+)
 from .ambulance import (
     EMERGENCY_INTERVAL,
     Ambulance,
@@ -31,7 +39,7 @@ from .vehicle import Event, Vehicle, VehicleFrame
 logger = logging.getLogger(__name__)
 
 CITY_FILES = Path(__file__).resolve().parent.parent / "city_files"
-DEFAULT_MAP = "2025_base.txt"
+DEFAULT_MAP = "2025_base.txt"  # the assignment's map; 2025_reforma.txt adds a glorieta
 SPAWN_INTERVAL = 10  # the assignment's rate; denser runs pass spawn_interval
 MAX_SPAWN_INTERVAL = 10
 MOTORCYCLE_SHARE = 0.3  # chance a spawned vehicle is a motorcycle
@@ -95,6 +103,7 @@ class CityModel(Model):
         self.traffic_lights: list[Traffic_Light] = []
         self.destinations: list[Position] = []
         self.buildings: list[Position] = []
+        self.monuments: list[Position] = []
         self.reserved: set[Position] = set()  # road cells held by a landing ambulance
         self.emergencies_served = 0
         self.spawned = 0
@@ -124,23 +133,35 @@ class CityModel(Model):
         light_cells: dict[Position, str] = {}
         for r, row in enumerate(lines):
             for c, char in enumerate(row):
-                pos = (
-                    c,
-                    self.height - r - 1,
-                )  # file row 0 is the top; grid y=0 is the bottom
-                cell = self.grid[pos]
+                pos = (c, self.height - r - 1)  # file row 0 is the top; y=0 the bottom
+                if char not in symbols:
+                    # A typo would otherwise leave a silent hole in the city.
+                    raise ValueError(
+                        f"map symbol {char!r} at row {r}, column {c} is not in "
+                        "mapDictionary.json"
+                    )
                 if char in ROAD_SYMBOLS:
-                    Road(self, cell, symbols[char])
+                    Road(self, self.grid[pos], symbols[char])
                     road_dirs[pos] = DIRECTION_VECTORS[symbols[char]]
                 elif char in LIGHT_SYMBOLS:
                     light_cells[pos] = char
-                elif char == "#":
-                    Obstacle(self, cell)
-                    self.buildings.append(pos)
-                elif char == "D":
-                    Destination(self, cell)
-                    self.destinations.append(pos)
+                else:
+                    self._place_fixed(char, pos)
         return road_dirs, light_cells
+
+    def _place_fixed(self, char: str, pos: Position) -> None:
+        """Buildings, destinations and monuments. Any other symbol the dictionary
+        declares (tiny test maps use '.') is open ground and gets no agent."""
+        cell = self.grid[pos]
+        if char == "#":
+            Obstacle(self, cell)
+            self.buildings.append(pos)
+        elif char == "D":
+            Destination(self, cell)
+            self.destinations.append(pos)
+        elif char == "A":
+            Monument(self, cell)
+            self.monuments.append(pos)
 
     def _place_lights(
         self, light_cells: dict[Position, str], symbols: dict[str, str | int]

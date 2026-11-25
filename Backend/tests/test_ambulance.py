@@ -1,4 +1,4 @@
-"""Behavior tests for flying ambulances, on the real 2025 map and on tiny maps.
+"""Behavior tests for flying ambulances, on the real 2025 maps and on tiny maps.
 
 Landing rules are checked against the raw map file, not against ambulance.py's own
 spot filter, so a wrong filter cannot vouch for itself.
@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from conftest import TinyCity, car_positions
+from conftest import REFORMA_MAP, TinyCity, car_positions, raw_map
 from traffic_base.agent import Car
 from traffic_base.ambulance import (
     CRUISE_ALTITUDE,
@@ -18,7 +18,7 @@ from traffic_base.ambulance import (
     Ambulance,
 )
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, Vector
-from traffic_base.model import CITY_FILES, DEFAULT_MAP, CityModel
+from traffic_base.model import DEFAULT_MAP, CityModel
 from traffic_base.vehicle import Event
 
 ARROWS: dict[str, Vector] = {
@@ -50,6 +50,7 @@ class CityRun:
 
     model: CityModel
     raw: list[str]  # map rows, top row first, as in the file
+    map_name: str
     cars: list[dict[int, Position]] = field(default_factory=list)
     reserved: list[frozenset[Position]] = field(default_factory=list)
     ambulances: list[dict[int, AmbulanceSnapshot]] = field(default_factory=list)
@@ -80,14 +81,10 @@ def snapshot(ambulance: Ambulance) -> AmbulanceSnapshot:
     )
 
 
-@pytest.fixture(scope="module")
-def city_run() -> CityRun:
-    raw = [
-        line.strip()
-        for line in (CITY_FILES / DEFAULT_MAP).read_text().splitlines()
-        if line.strip()
-    ]
-    run = CityRun(CityModel(), raw)
+@pytest.fixture(scope="module", params=[DEFAULT_MAP, REFORMA_MAP])
+def city_run(request: pytest.FixtureRequest) -> CityRun:
+    map_name = request.param
+    run = CityRun(CityModel(map_name=map_name), raw_map(map_name), map_name)
     run.record()
     for _ in range(RUN_STEPS):
         run.model.step()
@@ -110,9 +107,8 @@ def test_two_helipads_sit_on_far_apart_rooftops(city_run: CityRun) -> None:
     assert all(city_run.char(pad) == "#" for pad in model.helipads)
     a, b = model.helipads
     assert math.dist(a, b) > math.hypot(model.width, model.height) / 2
-    homes = {
-        (f["x"], f["z"]) for f in CityModel().vehicles() if f["kind"] == "ambulance"
-    }
+    fresh = CityModel(map_name=city_run.map_name)
+    homes = {(f["x"], f["z"]) for f in fresh.vehicles() if f["kind"] == "ambulance"}
     assert homes == set(model.helipads)
 
 

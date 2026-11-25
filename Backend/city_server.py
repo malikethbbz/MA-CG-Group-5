@@ -179,6 +179,7 @@ def _city() -> JsonDict:
             for light in model.traffic_lights
         ],
         "helipads": [_xz(pos) for pos in model.helipads],
+        "landmarks": [_xz(pos, kind="monument") for pos in model.monuments],
     }
 
 

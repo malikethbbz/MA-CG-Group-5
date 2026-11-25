@@ -1,49 +1,58 @@
-"""Behavior tests for cars and lights, on the real 2025 map and on tiny maps."""
+"""Behavior tests for cars and lights, on the real 2025 maps and on tiny maps."""
 
 import networkx as nx
 import pytest
 
-from conftest import TinyCity, car_positions
+from conftest import (
+    REFORMA_MAP,
+    TRAFFIC_STEPS,
+    TinyCity,
+    TrafficRun,
+    car_positions,
+    moves,
+    traffic_run,
+)
 from traffic_base.agent import PATIENCE, Car, Motorcycle
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, is_legal_move
-from traffic_base.model import MAX_SPAWN_INTERVAL, SPAWN_INTERVAL, CityModel
+from traffic_base.model import (
+    DEFAULT_MAP,
+    MAX_SPAWN_INTERVAL,
+    SPAWN_INTERVAL,
+    CityModel,
+)
 
 RIGHT = DIRECTION_VECTORS["Right"]
-History = list[dict[int, Position]]
+PLAYABLE_MAPS = [DEFAULT_MAP, REFORMA_MAP]
 
 
-@pytest.fixture(scope="module")
-def city_run() -> tuple[CityModel, History]:
-    """The real 2025 map run for 600 steps, recording every car's cell each step."""
-    model = CityModel()
-    history = [car_positions(model)]
-    for _ in range(600):
-        model.step()
-        history.append(car_positions(model))
-    return model, history
+@pytest.fixture(
+    scope="module",
+    params=[
+        (DEFAULT_MAP, SPAWN_INTERVAL),
+        (REFORMA_MAP, SPAWN_INTERVAL),
+        (REFORMA_MAP, 3),
+    ],
+    ids=lambda p: f"{p[0]}-every-{p[1]}",
+)
+def city_run(request: pytest.FixtureRequest) -> TrafficRun:
+    """A real map run, recording every car's cell each step."""
+    return traffic_run(*request.param)
 
 
-def moves(history: History) -> list[tuple[int, int, Position, Position]]:
-    """(step, car id, from, to) for every car that changed cell."""
-    return [
-        (t, car_id, before[car_id], after[car_id])
-        for t, (before, after) in enumerate(
-            zip(history, history[1:], strict=False), start=1
-        )
-        for car_id in before.keys() & after.keys()
-        if before[car_id] != after[car_id]
-    ]
-
-
-def test_every_destination_is_reachable_from_every_spawn_corner() -> None:
-    model = CityModel()
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_every_destination_is_reachable_from_every_spawn_corner(
+    map_name: str,
+) -> None:
+    model = CityModel(map_name=map_name)
     assert len(model.spawn_points) == 4
     for start in model.spawn_points:
         assert set(model.destinations) <= nx.descendants(model.graph, start)
+        assert set(model.reachable[start]) == set(model.destinations)
 
 
-def test_the_two_light_groups_are_never_green_at_the_same_time() -> None:
-    model = CityModel()
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_the_two_light_groups_are_never_green_at_the_same_time(map_name: str) -> None:
+    model = CityModel(map_name=map_name)
     short = [t for t in model.traffic_lights if t.offset == 0]
     long = [t for t in model.traffic_lights if t.offset != 0]
     assert short and long
@@ -58,14 +67,14 @@ def test_the_two_light_groups_are_never_green_at_the_same_time() -> None:
     assert seen == {True, False}  # both groups actually took a turn
 
 
-def test_cars_never_share_a_cell(city_run: tuple[CityModel, History]) -> None:
+def test_cars_never_share_a_cell(city_run: TrafficRun) -> None:
     _, history = city_run
     for positions in history:
         assert len(set(positions.values())) == len(positions)
 
 
 def test_cars_only_move_one_cell_with_the_street_direction(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     model, history = city_run
     steps = moves(history)
@@ -80,7 +89,7 @@ def test_cars_only_move_one_cell_with_the_street_direction(
 
 
 def test_diagonal_moves_never_cut_a_building_corner(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     """Checked on raw map cells, independent of the graph's own move rule."""
     model, history = city_run
@@ -92,7 +101,7 @@ def test_diagonal_moves_never_cut_a_building_corner(
     assert len(diagonals) > 100
 
 
-def test_cars_never_enter_a_red_light(city_run: tuple[CityModel, History]) -> None:
+def test_cars_never_enter_a_red_light(city_run: TrafficRun) -> None:
     model, history = city_run
     lights = {t.cell.coordinate: t for t in model.traffic_lights}
     entries = [
@@ -106,7 +115,7 @@ def test_cars_never_enter_a_red_light(city_run: tuple[CityModel, History]) -> No
 
 
 def test_cars_reach_destinations_and_are_removed(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     model, history = city_run
     assert model.arrived > 100
@@ -217,7 +226,7 @@ def test_blocked_car_with_no_detour_retries_once_per_patience_window(
 
 
 def test_motorcycles_spawn_and_follow_the_same_rules(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     # city_run's invariants (one cell per car, street direction, no red lights) cover
     # every Car subclass because model.cars selects by isinstance.
@@ -239,3 +248,33 @@ def test_a_shorter_spawn_interval_spawns_sooner() -> None:
 def test_spawn_interval_outside_the_allowed_range_is_rejected(interval: int) -> None:
     with pytest.raises(ValueError, match="spawn_interval"):
         CityModel(spawn_interval=interval)
+
+
+def test_a_long_run_keeps_flowing(city_run: TrafficRun) -> None:
+    model, _ = city_run
+    assert model.running, model.stop_reason
+    assert model.steps == TRAFFIC_STEPS
+    assert model.arrived > model.spawned * 0.8  # the city is not slowly filling up
+
+
+@pytest.mark.parametrize(
+    "map_name", ["2021_base.txt", "2022_base.txt", "2023_base.txt"]
+)
+def test_older_maps_still_load_with_every_destination_reachable(map_name: str) -> None:
+    model = CityModel(map_name=map_name)
+    assert len(model.spawn_points) >= 3
+    for start in model.spawn_points:
+        assert set(model.reachable[start]) == set(model.destinations)
+    assert model.monuments == []
+
+
+def test_the_2024_map_still_fails_on_its_orphan_light() -> None:
+    with pytest.raises(ValueError, match=r"cannot infer a direction.*\(4, 19\)"):
+        CityModel(map_name="2024_base.txt")
+
+
+def test_a_map_symbol_missing_from_the_dictionary_is_rejected(
+    tiny_city: TinyCity,
+) -> None:
+    with pytest.raises(ValueError, match=r"'\?' at row 0, column 2"):
+        tiny_city([">>?>D"])
