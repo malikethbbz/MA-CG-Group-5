@@ -1,76 +1,133 @@
 /*
- * CSS styles to create a centered canvas with a header
- *
- * Diego Córdova Rodríguez, A01781166
- * 2025-11-14
+ * Full-window canvas with a header, a status line and a stats overlay.
+ * Cyberpunk palette; the 3D colors live in src/world/palette.ts.
  */
 
-*{
-  font-family: Verdana, Geneva, Tahoma, sans-serif;
+:root {
+  --color-bg: #0e0830;
+  --color-panel: rgba(12, 10, 28, 0.82);
+  --color-text: #e6e4ff;
+  --color-muted: #8f8ab8;
+  --color-cyan: #00f0ff;
+  --color-magenta: #ff2bd6;
+  --color-red: #ff2a4d;
+  --color-green: #39ff6a;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --header-height: 56px;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
-    background: linear-gradient(0deg, #262626 0%, #3b3b3b 100%);
-    width: 100vw;
-    height: 100vh;
-    box-sizing: border-box;
-    margin: 0;
-    overflow: hidden;
-    display:grid;
-    grid-template-rows: 10vh 1fr;
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "header"
-      "main";
-    justify-content: center;
-    align-items: center;
-    justify-items: center;
-}
-
-#headerContainer{
-  grid-area: header;
-  background-color: rgb(40, 40, 40);
-  color: whitesmoke;
-  border-bottom: 2px solid #525252;
-  width: 100%;
-  height: 100%;
   margin: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+
+#headerContainer {
+  height: var(--header-height);
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-#headerContainer p{
-  margin: 0px;
-  font-size: 0.8em;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--color-magenta);
+  box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
 }
 
-h1{
-  margin: 0px;
-  font-size: 1.5em;
+#headerContainer h1 {
+  margin: 0;
+  line-height: var(--header-height);
+  font-size: 1.15rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.7);
 }
 
-canvas {
-    width: 75vw;
-    height: 75vh;
-    border: 1px solid black;
-    box-shadow: 0 20px 50px rgb(0, 0, 0);
-    /* width: 600px; */
-    /* height: 600px; */
+#headerContainer p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+#stage {
+  position: relative;
+  height: calc(100vh - var(--header-height));
 }
 
 #canvas {
-  background-color: White;
-  border: 4px solid #4b4b4b;
-  border-radius: 15px;
-  grid-area: main;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.lil-gui.autoPlace{
-  top: 15vh;
-  right: 5vw;
+#status {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  max-width: min(90vw, 44rem);
+  margin: 0;
+  padding: 0.6rem 1rem;
+  background: var(--color-panel);
+  border: 1px solid var(--color-cyan);
+  font-size: 0.85rem;
 }
 
-#backButton {
-    margin: 10px;
+#status[data-tone="error"] {
+  border-color: var(--color-red);
+  color: var(--color-red);
+}
+
+#status[data-tone="done"] {
+  border-color: var(--color-green);
+  color: var(--color-green);
+}
+
+#hud {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  min-width: 13rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-panel);
+  border-left: 3px solid var(--color-cyan);
+}
+
+#stats {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+}
+
+#stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+#stats dt {
+  color: var(--color-muted);
+}
+
+#stats dd {
+  margin: 0;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+#hud:has(#stats:empty) {
+  display: none;
+}
+
+.lil-gui.autoPlace {
+  top: calc(var(--header-height) + 1rem);
+  right: 1rem;
 }

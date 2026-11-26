@@ -1,49 +1,78 @@
-"""Behavior tests for cars and lights, on the real 2025 map and on tiny maps."""
+"""Behavior tests for cars and lights, on the real 2025 maps and on tiny maps."""
+
+import itertools
+from typing import Any
 
 import networkx as nx
 import pytest
 
-from conftest import TinyCity, car_positions
-from traffic_base.agent import PATIENCE, Car
+from conftest import (
+    DENSE_STEPS,
+    REFORMA_MAP,
+    TRAFFIC_STEPS,
+    TinyCity,
+    TrafficRun,
+    car_positions,
+    moves,
+    raw_map,
+    traffic_run,
+)
+from traffic_base.agent import PATIENCE, Car, Motorcycle
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, is_legal_move
-from traffic_base.model import SPAWN_INTERVAL, CityModel
+from traffic_base.model import (
+    DEFAULT_MAP,
+    EDGE_SPAWNS_PER_STEP,
+    MAX_SPAWN_INTERVAL,
+    SPAWN_INTERVAL,
+    CityModel,
+)
 
 RIGHT = DIRECTION_VECTORS["Right"]
-History = list[dict[int, Position]]
+PLAYABLE_MAPS = [DEFAULT_MAP, REFORMA_MAP]
+LONG_RUNS = [
+    (DEFAULT_MAP, SPAWN_INTERVAL),
+    (REFORMA_MAP, SPAWN_INTERVAL),
+    (REFORMA_MAP, 3),
+]
+# Edge spawning every step: the densest setting that still flows on both maps.
+DENSE_RUNS = [(map_name, 1, "edges", DENSE_STEPS) for map_name in PLAYABLE_MAPS]
 
 
-@pytest.fixture(scope="module")
-def city_run() -> tuple[CityModel, History]:
-    """The real 2025 map run for 600 steps, recording every car's cell each step."""
-    model = CityModel()
-    history = [car_positions(model)]
-    for _ in range(600):
-        model.step()
-        history.append(car_positions(model))
-    return model, history
+def run_id(spec: tuple[Any, ...]) -> str:
+    map_name, interval, mode, steps = (*spec, "corners", TRAFFIC_STEPS)[:4]
+    return f"{map_name}-{mode}-every-{interval}-for-{steps}"
 
 
-def moves(history: History) -> list[tuple[int, int, Position, Position]]:
-    """(step, car id, from, to) for every car that changed cell."""
-    return [
-        (t, car_id, before[car_id], after[car_id])
-        for t, (before, after) in enumerate(
-            zip(history, history[1:], strict=False), start=1
-        )
-        for car_id in before.keys() & after.keys()
-        if before[car_id] != after[car_id]
-    ]
+@pytest.fixture(scope="module", params=LONG_RUNS + DENSE_RUNS, ids=run_id)
+def city_run(request: pytest.FixtureRequest) -> TrafficRun:
+    """A real map run, recording every car's cell each step."""
+    return traffic_run(*request.param)
 
 
-def test_every_destination_is_reachable_from_every_spawn_corner() -> None:
-    model = CityModel()
+@pytest.fixture(scope="module", params=LONG_RUNS, ids=run_id)
+def long_run(request: pytest.FixtureRequest) -> TrafficRun:
+    return traffic_run(*request.param)
+
+
+@pytest.fixture(scope="module", params=DENSE_RUNS, ids=run_id)
+def dense_run(request: pytest.FixtureRequest) -> TrafficRun:
+    return traffic_run(*request.param)
+
+
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_every_destination_is_reachable_from_every_spawn_corner(
+    map_name: str,
+) -> None:
+    model = CityModel(map_name=map_name)
     assert len(model.spawn_points) == 4
     for start in model.spawn_points:
         assert set(model.destinations) <= nx.descendants(model.graph, start)
+        assert set(model.reachable[start]) == set(model.destinations)
 
 
-def test_the_two_light_groups_are_never_green_at_the_same_time() -> None:
-    model = CityModel()
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_the_two_light_groups_are_never_green_at_the_same_time(map_name: str) -> None:
+    model = CityModel(map_name=map_name)
     short = [t for t in model.traffic_lights if t.offset == 0]
     long = [t for t in model.traffic_lights if t.offset != 0]
     assert short and long
@@ -58,14 +87,14 @@ def test_the_two_light_groups_are_never_green_at_the_same_time() -> None:
     assert seen == {True, False}  # both groups actually took a turn
 
 
-def test_cars_never_share_a_cell(city_run: tuple[CityModel, History]) -> None:
+def test_cars_never_share_a_cell(city_run: TrafficRun) -> None:
     _, history = city_run
     for positions in history:
         assert len(set(positions.values())) == len(positions)
 
 
 def test_cars_only_move_one_cell_with_the_street_direction(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     model, history = city_run
     steps = moves(history)
@@ -80,7 +109,7 @@ def test_cars_only_move_one_cell_with_the_street_direction(
 
 
 def test_diagonal_moves_never_cut_a_building_corner(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     """Checked on raw map cells, independent of the graph's own move rule."""
     model, history = city_run
@@ -92,7 +121,7 @@ def test_diagonal_moves_never_cut_a_building_corner(
     assert len(diagonals) > 100
 
 
-def test_cars_never_enter_a_red_light(city_run: tuple[CityModel, History]) -> None:
+def test_cars_never_enter_a_red_light(city_run: TrafficRun) -> None:
     model, history = city_run
     lights = {t.cell.coordinate: t for t in model.traffic_lights}
     entries = [
@@ -106,7 +135,7 @@ def test_cars_never_enter_a_red_light(city_run: tuple[CityModel, History]) -> No
 
 
 def test_cars_reach_destinations_and_are_removed(
-    city_run: tuple[CityModel, History],
+    city_run: TrafficRun,
 ) -> None:
     model, history = city_run
     assert model.arrived > 100
@@ -178,7 +207,7 @@ def test_blocked_car_reroutes_around_a_stalled_car_and_arrives(
     tiny_city: TinyCity,
 ) -> None:
     model = tiny_city([">>>>>", ">>>>D"])
-    for car in list(model.agents_by_type[Car]):
+    for car in list(model.cars):
         car.remove()
     stalled = place_car_alone(model, (1, 0), (4, 0))
     stalled.route = []  # broken down: never moves again
@@ -214,3 +243,160 @@ def test_blocked_car_with_no_detour_retries_once_per_patience_window(
         model.step()
     blocked_steps = model.steps - SPAWN_INTERVAL
     assert calls == [{(1, 0)}] * (blocked_steps // PATIENCE)
+
+
+def test_motorcycles_spawn_and_follow_the_same_rules(
+    city_run: TrafficRun,
+) -> None:
+    # city_run's invariants (one cell per car, street direction, no red lights) cover
+    # every Car subclass because model.cars selects by isinstance.
+    model, _ = city_run
+    kinds = {frame["kind"] for frame in model.vehicles()}
+    assert {"car", "motorcycle"} <= kinds
+    share = sum(isinstance(c, Motorcycle) for c in model.cars) / model.active_cars
+    assert 0 < share < 1
+
+
+def test_a_shorter_spawn_interval_spawns_sooner() -> None:
+    model = CityModel(spawn_interval=3)
+    for _ in range(3):
+        model.step()
+    assert model.spawned == 8
+
+
+@pytest.mark.parametrize("interval", [0, MAX_SPAWN_INTERVAL + 1])
+def test_spawn_interval_outside_the_allowed_range_is_rejected(interval: int) -> None:
+    with pytest.raises(ValueError, match="spawn_interval"):
+        CityModel(spawn_interval=interval)
+
+
+def test_a_long_run_keeps_flowing(long_run: TrafficRun) -> None:
+    model, _ = long_run
+    assert model.running, model.stop_reason
+    assert model.steps == TRAFFIC_STEPS
+    assert model.arrived > model.spawned * 0.8  # the city is not slowly filling up
+
+
+@pytest.mark.parametrize(
+    "map_name", ["2021_base.txt", "2022_base.txt", "2023_base.txt"]
+)
+def test_older_maps_still_load_with_every_destination_reachable(map_name: str) -> None:
+    model = CityModel(map_name=map_name)
+    assert len(model.spawn_points) >= 3
+    for start in model.spawn_points:
+        assert set(model.reachable[start]) == set(model.destinations)
+    assert model.monuments == []
+
+
+def test_the_2024_map_still_fails_on_its_orphan_light() -> None:
+    with pytest.raises(ValueError, match=r"cannot infer a direction.*\(4, 19\)"):
+        CityModel(map_name="2024_base.txt")
+
+
+def test_a_map_symbol_missing_from_the_dictionary_is_rejected(
+    tiny_city: TinyCity,
+) -> None:
+    with pytest.raises(ValueError, match=r"'\?' at row 0, column 2"):
+        tiny_city([">>?>D"])
+
+
+def border_roads(map_name: str) -> set[Position]:
+    """Arrow cells on the map's outer rows and columns, read from the raw file."""
+    raw = raw_map(map_name)
+    height, width = len(raw), len(raw[0])
+    return {
+        (x, y)
+        for y in range(height)
+        for x in range(width)
+        if (x in (0, width - 1) or y in (0, height - 1))
+        and raw[height - y - 1][x] in "<>^v"
+    }
+
+
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_edge_spawn_points_are_the_border_roads_that_reach_a_destination(
+    map_name: str,
+) -> None:
+    model = CityModel(map_name=map_name, spawn_points="edges")
+    destinations = set(model.destinations)
+    expected = {
+        pos
+        for pos in border_roads(map_name)
+        if destinations & nx.descendants(model.graph, pos)
+    }
+    assert set(model.spawn_points) == expected
+    assert len(expected) > 100  # the whole outer ring, not just the corners
+    assert all(model.reachable[start] for start in model.spawn_points)
+
+
+def test_border_roads_that_only_lead_off_the_map_are_not_edge_spawns(
+    tiny_city: TinyCity,
+) -> None:
+    model = tiny_city(["<>>D"], spawn_points="edges")
+    assert sorted(model.spawn_points) == [(1, 0), (2, 0)]
+
+
+def test_edges_spawn_at_most_the_cap_on_ever_changing_free_points() -> None:
+    model = CityModel(spawn_interval=1, spawn_points="edges")
+    assert model.spawned == EDGE_SPAWNS_PER_STEP
+    seen = set(car_positions(model).values())
+    for _ in range(30):
+        before, spawned = car_positions(model), model.spawned
+        model.step()
+        after = car_positions(model)
+        new = {after[car] for car in after.keys() - before.keys()}
+        assert model.spawned - spawned == len(new) == EDGE_SPAWNS_PER_STEP
+        assert new <= set(model.spawn_points)
+        seen |= new
+    assert len(seen) > 30  # random points, not the same few every step
+
+
+def test_edge_spawning_follows_the_model_seed() -> None:
+    def run(seed: int) -> list[Position]:
+        model = CityModel(seed=seed, spawn_interval=1, spawn_points="edges")
+        for _ in range(20):
+            model.step()
+        return sorted(car_positions(model).values())
+
+    assert run(5) == run(5)
+    assert run(5) != run(6)
+
+
+@pytest.mark.parametrize("map_name", PLAYABLE_MAPS)
+def test_edges_reach_a_much_higher_peak_than_corners_at_interval_1(
+    map_name: str,
+) -> None:
+    corners = CityModel(map_name=map_name, spawn_interval=1)
+    corner_peak = 0
+    while corners.running and corners.steps < DENSE_STEPS:
+        corners.step()
+        corner_peak = max(corner_peak, corners.active_cars)
+    edges, history = traffic_run(map_name, 1, "edges", DENSE_STEPS)
+    assert not corners.running  # the four corner cells jam
+    assert edges.running, edges.stop_reason
+    assert max(len(cars) for cars in history) > 1.25 * corner_peak
+
+
+def test_dense_edge_traffic_keeps_draining(dense_run: TrafficRun) -> None:
+    """After the warm-up half, cars leave about as fast as they appear."""
+    model, history = dense_run
+    assert model.running, model.stop_reason
+    spawned = arrived = 0
+    for before, after in itertools.pairwise(history[len(history) // 2 :]):
+        spawned += len(after.keys() - before.keys())
+        arrived += len(before.keys() - after.keys())
+    assert arrived > 0.8 * spawned
+
+
+def test_edges_mode_stops_when_every_spawn_point_is_taken(tiny_city: TinyCity) -> None:
+    model = tiny_city([">>sD"], short_green=1, long_green=1000, spawn_points="edges")
+    assert model.spawned == 2  # both road cells; the light is no spawn point
+    while model.running and model.steps < 100:
+        model.step()
+    assert model.steps == SPAWN_INTERVAL
+    assert model.stats()["stopReason"] == "every spawn point is occupied"
+
+
+def test_an_unknown_spawn_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="spawn_points"):
+        CityModel(spawn_points="sides")  # type: ignore[arg-type]

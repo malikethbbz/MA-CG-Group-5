@@ -1,16 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
-        <title>Random Agents</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Urban Mobility</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="stylesheet" href="./css/styles.css">
-        <script defer type="module" src="src/random_agents.ts"></script>
+        <script defer type="module" src="src/main.ts"></script>
     </head>
 
     <body>
-        <div id='headerContainer'>
-            <h1>Random Agents</h1>
-        </div>
-        <canvas id="canvas"></canvas>
+        <header id="headerContainer">
+            <h1>Urban Mobility</h1>
+            <p>Arrows rotate, W A S D pan, + / - zoom (= and the numpad work too)</p>
+        </header>
+        <main id="stage">
+            <canvas id="canvas"></canvas>
+            <p id="status" role="status" aria-live="polite" hidden></p>
+            <aside id="hud" aria-label="Simulation stats">
+                <dl id="stats"></dl>
+            </aside>
+        </main>
     </body>
 </html>

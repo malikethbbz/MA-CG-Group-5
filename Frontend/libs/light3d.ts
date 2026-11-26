@@ -8,7 +8,7 @@
 
 import { V3 } from '../libs/3d-lib.js';
 import { type Color } from '../libs/color.js';
-import { VecXYZ } from '../libs/vecXYZ.js';
+import { type VecXYZ } from '../libs/vecXYZ.js';
 
 export class Light3D {
     id: number;
