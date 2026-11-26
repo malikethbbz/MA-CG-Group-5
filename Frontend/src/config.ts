@@ -23,8 +23,8 @@ export interface TrafficPreset {
 }
 
 // One menu instead of two: edge spawning only adds traffic at interval 1 (the server
-// caps it at 2 cars per step), and corners at interval 1 gridlocks. Measured peaks on
-// the 2025 map: Normal ~27 cars, Packed ~140, Max city ~190.
+// caps it at 3 cars per step), and corners at interval 1 gridlocks. Measured peaks on
+// the 2025 map: Normal ~28 cars, Packed ~130, Max city ~257 (about 220 at once).
 export const TRAFFIC_PRESETS: Readonly<Record<string, TrafficPreset>> = {
     'Normal (assignment)': { spawnInterval: 10, spawnPoints: 'corners' },
     'Busy': { spawnInterval: 5, spawnPoints: 'corners' },

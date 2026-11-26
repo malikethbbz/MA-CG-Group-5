@@ -47,15 +47,31 @@ class Car(CellAgent):
             )
 
     def step(self) -> None:
+        """One car on its own. The model moves cars with begin_step, try_drive and
+        hold instead, so a whole queue can advance in one step."""
+        self.begin_step()
+        if not self.try_drive():
+            self.hold()
+
+    def begin_step(self) -> None:
         self.age += 1
+
+    def try_drive(self) -> bool:
+        """Moves one cell if the way is clear; True if the car moved."""
         if not self.route:
+            return False
+        nxt = self.route[0]
+        if self._red_light_ahead(nxt) or self._blocked(nxt):
+            return False
+        self._drive()
+        return True
+
+    def hold(self) -> None:
+        """Waits this step, for the reason that stopped try_drive."""
+        if not self.route or self._red_light_ahead(self.route[0]):
             self._wait()
-        elif self._red_light_ahead(self.route[0]):
-            self._wait()
-        elif self._blocked(self.route[0]):
-            self._handle_blocked()
         else:
-            self._drive()
+            self._handle_blocked()
 
     def _red_light_ahead(self, nxt: Position) -> bool:
         """Stop before a red light; a car already on a light keeps going."""

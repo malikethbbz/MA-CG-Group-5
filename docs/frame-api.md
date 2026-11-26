@@ -8,14 +8,14 @@ The frontend draws the simulation from two endpoints. `/init` still creates the 
 400 with a message naming the field.
 
 - `"corners"` is the assignment's rule: every spawn step puts a car on each free map
-  corner. Lower intervals spawn denser traffic; 2 still flows (about 140 cars at
-  once), but 1 jams the four corner cells within about 70 steps.
+  corner. Lower intervals spawn denser traffic; 2 still flows (about 130 cars at
+  once), but 1 jams the four corner cells within 70 to 220 steps.
 - `"edges"` spawns on every border road cell that is not a light and can reach a
-  destination (the whole outer ring). Each spawn step fills 2 of the free ones, chosen
-  at random from the seed. Use it with `spawnInterval: 1` for the densest traffic
-  that still flows: about 190 cars at once on `2025_base.txt` and 225 on
-  `2025_reforma.txt` over 1000 steps. That is about 2 cars a step, roughly what the
-  city can drain, so more cars gridlock either map. At higher intervals `"edges"`
+  destination (the whole outer ring). Each spawn step fills 3 of the free ones, chosen
+  at random from the seed. Use it with `spawnInterval: 1` for the densest traffic:
+  on `2025_base.txt` about 220 cars at once (peak 257) keep flowing for 1500 steps,
+  about 2.9 arriving a step. `2025_reforma.txt` holds about 300 but its glorieta
+  gridlocks after 800 to 900 steps on some seeds. At higher intervals `"edges"`
   spawns fewer cars than `"corners"`.
 
 A run stops when a spawn step cannot place any car; `stats.stopReason` says why.

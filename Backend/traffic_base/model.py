@@ -45,9 +45,10 @@ MAX_SPAWN_INTERVAL = 10
 MOTORCYCLE_SHARE = 0.3  # chance a spawned vehicle is a motorcycle
 SpawnPoints = Literal["corners", "edges"]
 SPAWN_MODES: tuple[str, ...] = get_args(SpawnPoints)
-# Cars an edges-mode spawn step adds at most. With spawn_interval 1 this is 2 cars a
-# step, about what the 2025 maps can drain; 3 a step, or 4 every other step, gridlocks.
-EDGE_SPAWNS_PER_STEP = 2
+# Cars an edges-mode spawn step adds at most. With spawn_interval 1 this is 3 cars a
+# step, about what the 2025 maps can drain now that queues move together; 4 a step
+# gridlocks within ~300 steps.
+EDGE_SPAWNS_PER_STEP = 3
 SPAWN_NOUN = {"corners": "corner", "edges": "point"}
 ROAD_SYMBOLS = "<>^v"
 LIGHT_SYMBOLS = "sS"
@@ -267,6 +268,24 @@ class CityModel(Model):
     def _is_free(self, pos: Position) -> bool:
         return not car_on(self, pos)
 
+    def _move_cars(self) -> None:
+        """Every car moves at most one cell, in random order, but a car blocked by
+        the car ahead gets another try once that car has moved. Without the retries
+        a queue only advanced where its cars happened to be drawn front to back, so
+        a line at a green light crept forward one car per step."""
+        cars = list(self.cars)
+        self.random.shuffle(cars)
+        for car in cars:
+            car.begin_step()
+        waiting = cars
+        while waiting:
+            still = [car for car in waiting if not car.try_drive()]
+            if len(still) == len(waiting):
+                break
+            waiting = still
+        for car in waiting:
+            car.hold()
+
     def _spawn_cars(self) -> int:
         starts = [
             s for s in self.spawn_points if self._is_free(s) and self.reachable[s]
@@ -335,7 +354,7 @@ class CityModel(Model):
             light.step()
         for ambulance in self.ambulances:
             ambulance.step()
-        self.cars.shuffle_do("step")
+        self._move_cars()
         if self.steps % self.spawn_interval == 0 and self._spawn_cars() == 0:
             self.running = False
             self.stop_reason = self._why_no_spawn()

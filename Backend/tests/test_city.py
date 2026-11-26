@@ -203,6 +203,33 @@ def place_car_alone(model: CityModel, at: Position, destination: Position) -> Ca
     return Car(model, model.grid[at], destination, model.drivable[at])
 
 
+@pytest.mark.parametrize("seed", [1, 2, 3, 42])
+def test_a_bumper_to_bumper_queue_moves_up_together_in_one_step(
+    tiny_city: TinyCity, seed: int
+) -> None:
+    """Six cars nose to tail on a clear road all advance a cell in the same step,
+    whatever order they are drawn in. Moving them in one random pass only advanced
+    the cars drawn front to back, so most of the queue stood still."""
+    model = tiny_city([">" * 9 + "D"])
+    model.random.seed(seed)
+    for car in list(model.cars):
+        car.remove()
+    queue = [place_car_alone(model, (x, 0), (9, 0)) for x in range(6)]
+    model.step()
+    assert [car.cell.coordinate for car in queue] == [(x + 1, 0) for x in range(6)]
+    assert all(car.state == "driving" for car in queue)
+
+
+def test_a_queue_still_never_puts_two_cars_on_one_cell(tiny_city: TinyCity) -> None:
+    # Two lanes merging into one: the retries must not let a second car into a
+    # cell the first one took this step.
+    model = tiny_city([">>>>>>D", ">>>>>>D"])
+    for _ in range(60):
+        model.step()
+        cells = [car.cell.coordinate for car in model.cars]
+        assert len(cells) == len(set(cells))
+
+
 def test_blocked_car_reroutes_around_a_stalled_car_and_arrives(
     tiny_city: TinyCity,
 ) -> None:
