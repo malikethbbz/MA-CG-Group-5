@@ -204,7 +204,30 @@ then `S` lights for the next 15. The lights that feed the glorieta show yellow f
 2 steps of their green, and cars stop on yellow too.
 
 The glorieta on `2025_reforma.txt` is a diamond: cars cut diagonally over the island's
-four corners, and the paved diamond with the monument in the middle is off limits.
+four corners, and the rest of the island (the paved diamond with the monument, and the
+bit of asphalt around it) is off limits.
+
+### Adding the glorieta to a new map
+
+The code finds the glorieta from the map file, so a new map only needs a few characters
+changed. Pick a block of buildings with a two-lane street on each side that goes round it
+counter-clockwise as the map file reads (right along the bottom, up the right side, left
+along the top, down the left side), then:
+
+1. Put `A` on the cell in the middle of the block.
+2. Put `1` on its top-left corner, `7` top-right, `3` bottom-left and `9` bottom-right.
+3. Save it in `Backend/city_files/` with a new name, for example `2026_glorieta.txt`.
+4. Set `MAP` in `Frontend/src/config.ts` to that file name.
+5. Set `REFORMA_MAP` in `Backend/tests/conftest.py` to the same file and run
+   `python -m pytest`: `tests/test_reforma.py` checks the ring, the corners and the lights.
+
+```
+<<<<<<<<<        <<<<<<<<<
+v#######^        v1#####7^
+v#######^   ->   v###A###^
+v#######^        v3#####9^
+>>>>>>>>>        >>>>>>>>>
+```
 
 ## Server API
 

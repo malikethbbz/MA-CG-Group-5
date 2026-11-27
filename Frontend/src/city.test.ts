@@ -197,18 +197,19 @@ describe('the glorieta plaza', () => {
         expect(at(0, 0)).toBe(true);
     });
 
-    it('points every arrow counter-clockwise, the one way cars drive the ring', () => {
+    it('points every arrow the way the server drives the ring (+x, +z, -x, -z round it)', () => {
         // Island centred on (1, 0.5)
         const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
         const pieces = buildCity(island).statics.filter((item) => item.color === COLORS.laneArrow);
-        expect(pieces).toHaveLength(4 * 2 * 3);
+        // One arrow on each side of the ring, three pieces each
+        expect(pieces).toHaveLength(4 * 3);
         // Each arrow is a shaft and two head pieces; the shaft is the arrow's heading
         const shafts = pieces.filter((_, i) => i % 3 === 0);
         for (const piece of shafts) {
             const [cx, , cz] = point(piece.world, 0, 0, 0);
             const [bx, , bz] = point(piece.world, 0, 0, -0.5);
             const [fx, , fz] = point(piece.world, 0, 0, 0.5);
-            // Counter-clockwise seen from above: the radius turns left onto the heading
+            // Going +x along the low-z side, +z up the high-x side: x turns onto z
             const turn = (cx - 1) * (fz - bz) - (cz - 0.5) * (fx - bx);
             expect(turn).toBeGreaterThan(0);
         }
@@ -227,5 +228,29 @@ describe('the glorieta plaza', () => {
             };
             expect(gap(0.5)).toBeLessThan(gap(-0.5));
         }
+    });
+
+    it('puts one arrow in the middle of each side of the ring, on the inner lane', () => {
+        // Island x 0.5..1.5, z -0.5..1.5: the inner lane cells are x = 0 or 2 and z = -1 or 2
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const pieces = buildCity(island).statics.filter((item) => item.color === COLORS.laneArrow);
+        const shafts = pieces.filter((_, i) => i % 3 === 0);
+        const arrows = shafts.map((shaft) => {
+            const [x, , z] = point(shaft.world, 0, 0, 0);
+            const [bx, , bz] = point(shaft.world, 0, 0, -0.5);
+            const [fx, , fz] = point(shaft.world, 0, 0, 0.5);
+            // To the nearest half cell (the shaft sits a little behind the arrow's middle),
+            // and the heading as a unit step
+            const half = (v: number) => (Math.round(v * 2) / 2 + 0).toFixed(1);
+            const length = Math.hypot(fx - bx, fz - bz);
+            const unit = (v: number) => Math.round(v / length) + 0;
+            return `${half(x)},${half(z)} heading ${unit(fx - bx)},${unit(fz - bz)}`;
+        }).sort();
+        expect(arrows).toEqual([
+            '0.0,0.5 heading 0,-1',   // west side, going -z
+            '1.0,-1.0 heading 1,0',   // south side, going +x
+            '1.0,2.0 heading -1,0',   // north side, going -x
+            '2.0,0.5 heading 0,1',    // east side, going +z
+        ]);
     });
 });

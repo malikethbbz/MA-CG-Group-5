@@ -163,7 +163,7 @@ function building(cell: GridCell, kind: 'hospital' | 'helipad' | 'tower'): DrawI
 }
 
 // "x,z" of the building cells joined to a monument: the glorieta's island. The
-// server drives the square ring around it like any other street.
+// server drives the ring around it, cutting the island's corners diagonally.
 export function plazaCells(city: CityData): Set<string> {
     const buildings = new Set(city.obstacles.map((cell) => key(cell.x, cell.z)));
     const plaza = new Set<string>();
@@ -219,7 +219,7 @@ export function glorietaArea(plaza: Set<string>): GlorietaArea | null {
     };
 }
 
-// True for a cell on the island or on the two lanes around it
+// True for a cell on the island or on the inner lane around it
 export function inGlorieta(area: GlorietaArea | null, cell: GridCell): boolean {
     if (area === null) {
         return false;
@@ -258,9 +258,8 @@ function diamondDashes(area: GlorietaArea, a: number, b: number): DrawItem[] {
     return dashes;
 }
 
-// The ring is one way, counter-clockwise seen from above (the same way the server
-// drives it), so the arrows go round the diamond in the same order as its corners.
-const ARROWS_PER_SIDE = 2;
+// The ring is one way, the same way the server drives it: +x along the low-z side,
+// +z up the high-x side, -x along the high-z side and -z down the low-x side.
 
 // One arrow lying on the floor and pointing along +z of `parent`: a shaft and two
 // pieces of the head turned 45 degrees each way
@@ -278,20 +277,20 @@ function arrow(parent: Mat4): DrawItem[] {
     ];
 }
 
-// Arrows along the diamond with corners at (+-a, 0) and (0, +-b)
-function diamondArrows(area: GlorietaArea, a: number, b: number): DrawItem[] {
-    const corners = [[a, 0], [0, b], [-a, 0], [0, -b]];
+// One arrow in the middle of each side of the ring, on its inner lane
+function ringArrows(area: GlorietaArea): DrawItem[] {
+    const [halfX, halfZ] = area.half;
+    const sides = [
+        // [x, z] from the center, and the way cars go there
+        [[halfX + 0.5, 0], [0, 1]],
+        [[0, halfZ + 0.5], [-1, 0]],
+        [[-(halfX + 0.5), 0], [0, -1]],
+        [[0, -(halfZ + 0.5)], [1, 0]],
+    ];
     const arrows: DrawItem[] = [];
-    for (let side = 0; side < 4; side++) {
-        const [x0, z0] = corners[side];
-        const [x1, z1] = corners[(side + 1) % 4];
-        const yaw = Math.atan2(x1 - x0, z1 - z0);
-        for (let i = 0; i < ARROWS_PER_SIDE; i++) {
-            const t = (i + 1) / (ARROWS_PER_SIDE + 1);
-            const position = V3.create(area.center[0] + x0 + t * (x1 - x0), 0,
-                area.center[1] + z0 + t * (z1 - z0));
-            arrows.push(...arrow(M4.multiply(M4.translation(position), M4.rotationY(yaw))));
-        }
+    for (const [[x, z], [dx, dz]] of sides) {
+        const position = V3.create(area.center[0] + x, 0, area.center[1] + z);
+        arrows.push(...arrow(M4.multiply(M4.translation(position), M4.rotationY(Math.atan2(dx, dz)))));
     }
     return arrows;
 }
@@ -304,10 +303,9 @@ function glorietaFloor(area: GlorietaArea): DrawItem[] {
         M4.scale(V3.create(floorX, ROAD_THICKNESS, floorZ)));
     return [
         { ...drawItem('street', slab, COLORS.ground), band: BAND_PLAIN },
-        // The lane line runs halfway between the island and the outer edge
+        // A dashed diamond whose tips touch the edge of the floor
         ...diamondDashes(area, halfX + RING_LANES / 2, halfZ + RING_LANES / 2),
-        // On the inner lane, between the paved diamond and the lane line
-        ...diamondArrows(area, halfX + 0.5, halfZ + 0.5),
+        ...ringArrows(area),
         drawItem('box', diamondBox(area, halfX, halfZ, 0.05), COLORS.plazaCurb, 0.6),
         drawItem('box', diamondBox(area, 0.85 * halfX, 0.85 * halfZ, 0.07), COLORS.plaza),
     ];
@@ -354,12 +352,12 @@ export function buildCity(city: CityData): CityLayout {
         if (inGlorieta(glorieta, road)) {
             continue;
         }
-        const ahead = DIRECTIONS[road.direction];
+        const ahead = vectorOf(road.direction);
         statics.push(streetTile(road, ahead, textureBand(flow, road, ahead)));
     }
     for (const light of city.lights) {
         // The pole stands on the right of its lane
-        const [dx, dz] = DIRECTIONS[light.direction];
+        const [dx, dz] = vectorOf(light.direction);
         const shift = [dz * 0.42, -dx * 0.42];
         statics.push(drawItem('box', cellBox(light, 0, [0.05, 0.7, 0.05], shift), COLORS.lightPole));
         lamps.set(light.id, drawItem('box', cellBox(light, 0.7, [0.16, 0.25, 0.16], shift), COLORS.lightPole, 1));

@@ -26,8 +26,10 @@ A run stops when a spawn step cannot place any car; `stats.stopReason` says why.
 
 The default map is the assignment's `2025_base.txt`. `{"map": "2025_reforma.txt"}`
 loads the same city with a Paseo de la Reforma style glorieta in the centre: a
-two-lane ring circulating counter-clockwise around an island with a monument, a
-traffic light on every approach into the ring, and extra lights along the avenue.
+two-lane ring around an island with a monument (counter-clockwise as the map file
+reads: +x along the bottom rows, +y up the right side), the island's four corners as
+diagonal road, a traffic light on every approach into the ring, and extra lights along
+the avenue.
 
 ## `GET /city`
 
@@ -82,8 +84,9 @@ Advances the model one step (if it is still running) and returns everything that
 }
 ```
 
-- `lights`: `green` is true while the light lets cars through; `yellow` is true in the
-  last 2 steps of that green, only on the lights around the glorieta.
+- `lights`: `green` is true for the light's whole green phase. `yellow` is true in the
+  last 2 steps of that phase, only on the lights around the glorieta; cars stop on
+  yellow too, so a light lets cars through only when `green` is true and `yellow` is false.
 - `vehicles` holds every vehicle alive after the step. Ids are stable: create a mesh for a
   new id, move it while the id appears, delete it when the id is gone.
 - `kind` is `car`, `motorcycle` (same rules as a car, about 30% of spawns) or
