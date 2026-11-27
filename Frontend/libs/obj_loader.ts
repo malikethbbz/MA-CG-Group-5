@@ -142,12 +142,6 @@ export class ObjLoader {
             }
         });
 
-        //console.log("ATTRIBUTES:")
-        //console.log(arrays);
-
-        //console.log("OBJ DATA:")
-        //console.log(objData);
-
         return arrays;
     }
 

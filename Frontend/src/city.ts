@@ -134,7 +134,7 @@ export function cellNoise(x: number, z: number): number {
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-// Ambulances park on the hospital and on the helipads next to it, so those
+// Ambulances park on the helipads (the hospital and the building next to it), so those
 // buildings are exactly as tall as the altitude the server parks them at
 function building(cell: GridCell, kind: 'hospital' | 'helipad' | 'tower'): DrawItem[] {
     const height = kind === 'tower' ? 0.6 + 2.4 * cellNoise(cell.x, cell.z) : HELIPAD_ROOF;

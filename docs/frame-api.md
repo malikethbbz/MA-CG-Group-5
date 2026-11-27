@@ -19,7 +19,7 @@ of range, a map that is not in `city_files/`, or a body that is not a JSON objec
 returns `400` with a short `message`.
 
 Every spawn step puts a car on each free map corner, up to `carsPerSpawn` of them.
-Lower intervals spawn denser traffic; 1 jams the four corner cells after a few hundred
+Lower intervals spawn denser traffic; 1 jams the four corner cells within about a hundred
 steps.
 
 A run stops when a spawn step cannot place any car; `stats.stopReason` says why.
@@ -83,8 +83,7 @@ Advances the model one step (if it is still running) and returns everything that
 - `vehicles` holds every vehicle alive after the step. Ids are stable: create a mesh for a
   new id, move it while the id appears, delete it when the id is gone.
 - `kind` is `car`, `motorcycle` (same rules as a car, about 30% of spawns) or
-  `ambulance`; `police`, `rogue` and `swat` come later with the
-  same shape. `stats.active` counts cars only.
+  `ambulance`. `stats.active` counts cars only.
 - `y` is altitude in cells, 0 on the road. Flying units send `y > 0`.
 - `heading` is the last one-cell move, so a diagonal is `{"x": 1, "z": 1}`. An
   ambulance sends the nearest of the eight directions it is flying in.

@@ -134,20 +134,24 @@ class CityScene extends Scene {
     // "Reiniciar simulación": a new model with the current GUI values
     async restart(): Promise<void> {
         const run = ++this.runId;
+        const wasRunning = this.running;
         this.running = false;
         this.hud.showStatus('Reiniciando la simulación...', 'info');
+        let restarted = false;
         try {
             await initModel(this.runOptions());
             this.vehicles = new Map();
+            this.lightGreen = new Map();
             this.following = null;
             this.hud.clearStatus();
+            restarted = true;
         } catch (error) {
             // The server keeps its current model, so the current run goes on
             console.error(error);
             this.hud.showStatus(`No se pudo reiniciar: ${errorText(error)}`, 'error', 5000);
         }
         if (run === this.runId) {
-            this.running = true;
+            this.running = restarted || wasRunning;
             this.waiting = false;
             this.elapsed = 0;
         }

@@ -56,7 +56,7 @@ def init_model():
             ambulances=int(params.get("ambulances", 2)),
             emergency_chance=float(params.get("emergencyChance", 1.0)),
         )
-    except (ValueError, TypeError, KeyError, FileNotFoundError) as error:
+    except (ValueError, TypeError, KeyError, OverflowError, FileNotFoundError) as error:
         logger.warning("/init failed: %s", error)
         return jsonify({"message": f"Could not create the model: {error}"}), 400
 

@@ -84,6 +84,7 @@ def test_init_passes_the_new_options_to_the_model(client: FlaskClient) -> None:
         {"emergencyChance": 1.5},
         {"emergencyChance": -0.1},
         {"emergencyChance": "half"},
+        {"seed": float("inf")},
     ],
 )
 def test_init_rejects_options_out_of_range(client: FlaskClient, body: dict) -> None:

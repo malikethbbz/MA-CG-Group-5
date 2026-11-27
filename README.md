@@ -42,7 +42,8 @@ and extends it:
 
 - Cars spawn at the corners of the map and drive to a destination with an A* route.
 - Traffic lights in two groups, so crossing streets are never green at the same time.
-- Flying ambulances that answer emergencies and land on reserved pads.
+- Flying ambulances that leave from a hospital, answer emergencies and land on a
+  reserved road cell.
 - A roundabout (glorieta) around a monument on the `2025_reforma.txt` map.
 - A 3D city with buildings, textured streets and street lamps.
 
@@ -159,7 +160,7 @@ cd Frontend
 npx vite
 ```
 
-Open http://localhost:5173/. To open another map, pick it in the **Map** menu
+Open http://localhost:5173/. To open another map, pick it in the **Mapa** menu (inside **Simulación**)
 or add it to the URL, for example http://localhost:5173/?map=2025_reforma.txt.
 
 Controls: arrows rotate the camera, `W` `A` `S` `D` pan, `+` / `-` zoom.
@@ -210,7 +211,7 @@ then `S` lights for the next 15.
 
 | `/init` option | Default | Meaning |
 |----------------|---------|---------|
-| `map` | `"2025_base.txt"` | A map file in `Backend/city_files/` |
+| `map` | `"2025_base.txt"` | `2025_base.txt` or `2025_reforma.txt` |
 | `seed` | `42` | Random seed |
 | `spawnInterval` | `10` | Steps between spawns, 1 to 10 |
 | `carsPerSpawn` | `4` | Most cars a spawn step places on the free corners, 1 to 4 |
@@ -243,7 +244,7 @@ again once it has moved, so a whole queue advances in one step.
 
 **Ambulances** park on the roof of the **hospital** (the building nearest the map
 centre) and the building next to it. Every 25 steps an emergency may open at a random
-building with a free road cell beside it (never the hospital). The nearest idle
+building with a free road cell beside it (never the hospital). The first idle
 ambulance reserves that cell, flies straight to it at cruise height (`cruise`), lands
 once no car is on it (`on_scene`), serves for 10 steps and flies back (`return`) to
 its roof (`idle`). Cars never drive into a reserved cell.
