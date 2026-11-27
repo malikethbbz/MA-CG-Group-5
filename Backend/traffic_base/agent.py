@@ -2,6 +2,8 @@ from mesa.discrete_space import CellAgent, FixedAgent
 
 # Steps a car waits behind something before it looks for a way around it.
 PATIENCE = 3
+# Last steps of a green that show yellow, on the lights that have a yellow phase
+YELLOW_STEPS = 2
 
 
 def vehicle_frame(agent, x, y, z):
@@ -53,7 +55,9 @@ class Car(CellAgent):
         if not self.route:
             return False
         next_cell = self.route[0]
-        if self.red_light_ahead(next_cell) or self.is_blocked(next_cell):
+        if self.red_light_ahead(next_cell) or self.is_yellow_light_ahead(next_cell):
+            return False
+        if self.is_blocked(next_cell):
             return False
 
         here = self.cell.coordinate
@@ -69,7 +73,11 @@ class Car(CellAgent):
 
     def hold(self):
         """Waits this step. A car stuck behind something reroutes after a while."""
-        if self.route and not self.red_light_ahead(self.route[0]):
+        stopped_by_light = self.route and (
+            self.red_light_ahead(self.route[0])
+            or self.is_yellow_light_ahead(self.route[0])
+        )
+        if self.route and not stopped_by_light:
             self.blocked_for += 1
             if self.blocked_for >= PATIENCE:
                 here = self.cell.coordinate
@@ -86,6 +94,13 @@ class Car(CellAgent):
             return False
         light = self.model.light_at(next_cell)
         return light is not None and not light.state
+
+    def is_yellow_light_ahead(self, next_cell):
+        """Stop before a yellow light. A car that is already on a light keeps going."""
+        if self.model.light_at(self.cell.coordinate) is not None:
+            return False
+        light = self.model.light_at(next_cell)
+        return light is not None and light.yellow
 
     def is_blocked(self, pos):
         """A car is there, or an ambulance reserved the cell to land."""
@@ -109,19 +124,28 @@ class Traffic_Light(FixedAgent):
     they are never green at the same time.
     """
 
-    def __init__(self, model, cell, offset, green_steps, cycle):
+    def __init__(self, model, cell, offset, green_steps, cycle, has_yellow=False):
         super().__init__(model)
         self.cell = cell
         self.offset = offset
         self.green_steps = green_steps
         self.cycle = cycle
-        self.state = self.is_green(0)  # True is green
+        self.has_yellow = has_yellow
+        self.state = self.is_green(0)  # True is green (or yellow)
+        self.yellow = self.is_yellow(0)
 
     def is_green(self, t):
         return (t - self.offset) % self.cycle < self.green_steps
 
+    def is_yellow(self, t):
+        """The last YELLOW_STEPS of the green, only on lights with a yellow phase."""
+        time_in_cycle = (t - self.offset) % self.cycle
+        last_steps = self.green_steps - YELLOW_STEPS <= time_in_cycle < self.green_steps
+        return self.has_yellow and last_steps
+
     def step(self):
         self.state = self.is_green(self.model.steps)
+        self.yellow = self.is_yellow(self.model.steps)
 
 
 class Destination(FixedAgent):
@@ -141,7 +165,7 @@ class Obstacle(FixedAgent):
 
 
 class Monument(FixedAgent):
-    """A landmark on a roundabout island, like Mexico City's Angel of Independence."""
+    """A landmark on the diamond glorieta, like Mexico City's Angel of Independence."""
 
     def __init__(self, model, cell):
         super().__init__(model)

@@ -9,6 +9,7 @@ from mesa.discrete_space import OrthogonalMooreGrid
 from .agent import Car, Destination, Monument, Motorcycle, Obstacle, Road, Traffic_Light
 from .ambulance import EMERGENCY_INTERVAL, MAX_OPEN_EMERGENCIES, Ambulance, Emergency
 from .city_graph import (
+    DIAGONAL_VECTORS,
     DIRECTION_VECTORS,
     build_street_graph,
     infer_light_directions,
@@ -21,6 +22,7 @@ DEFAULT_MAP = "2025_base.txt"
 SPAWN_INTERVAL = 10
 MAX_SPAWN_INTERVAL = 10
 MOTORCYCLE_SHARE = 0.3  # chance a spawned vehicle is a motorcycle
+YELLOW_RADIUS = 5  # lights this close to a monument (the glorieta) show yellow
 
 
 class CityModel(Model):
@@ -123,6 +125,9 @@ class CityModel(Model):
                 if char in "<>^v":
                     Road(self, cell, symbols[char])
                     road_dirs[pos] = DIRECTION_VECTORS[symbols[char]]
+                elif char in "7913":
+                    Road(self, cell, symbols[char])
+                    road_dirs[pos] = DIAGONAL_VECTORS[symbols[char]]
                 elif char in "sS":
                     light_cells[pos] = char
                 elif char == "#":
@@ -147,7 +152,14 @@ class CityModel(Model):
                 offset, green = 0, short_green
             else:
                 offset, green = short_green, long_green
-            light = Traffic_Light(self, self.grid[pos], offset, green, cycle)
+            # Only the lights around the glorieta's monument have a yellow phase
+            near_monument = any(
+                max(abs(pos[0] - mx), abs(pos[1] - my)) <= YELLOW_RADIUS
+                for mx, my in self.monuments
+            )
+            light = Traffic_Light(
+                self, self.grid[pos], offset, green, cycle, near_monument
+            )
             self.traffic_lights.append(light)
 
     def place_ambulances(self, count):

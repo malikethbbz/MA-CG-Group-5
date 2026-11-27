@@ -136,11 +136,12 @@ describe('the glorieta plaza', () => {
     it('is the island of buildings around the Reforma monument, and absent on the base map', () => {
         const reforma = mapCity(reformaMap);
         const plaza = plazaCells(reforma);
-        // A 5 x 3 island centred on the monument
+        // A 5 x 3 island centred on the monument, without its 4 corners (diagonal road)
         const { x, z } = reforma.landmarks[0];
-        expect(plaza.size).toBe(15);
+        expect(plaza.size).toBe(11);
         expect(plaza.has(`${x},${z}`)).toBe(true);
-        expect(plaza.has(`${x - 2},${z - 1}`) && plaza.has(`${x + 2},${z + 1}`)).toBe(true);
+        expect(plaza.has(`${x - 2},${z}`) && plaza.has(`${x + 2},${z}`)).toBe(true);
+        expect(plaza.has(`${x - 2},${z - 1}`) || plaza.has(`${x + 2},${z + 1}`)).toBe(false);
         expect(plazaCells(mapCity(baseMap)).size).toBe(0);
     });
 
@@ -149,12 +150,24 @@ describe('the glorieta plaza', () => {
         expect(plazaCells(city([], { obstacles: block, landmarks: [{ x: 2, z: 2 }] })).size).toBe(0);
     });
 
-    it('draws the plaza and the monument instead of towers on the island', () => {
+    it('draws street, a diamond plaza and the monument instead of towers on the island', () => {
         const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
         const statics = buildCity(island).statics;
-        // The island cell and the monument's own cell
-        expect(statics.filter((item) => item.color === COLORS.plaza)).toHaveLength(2);
+        // One asphalt tile per island cell: the building cell and the monument's cell
+        expect(statics.filter((item) => item.shape === 'street')).toHaveLength(2);
+        expect(statics.filter((item) => item.color === COLORS.plaza)).toHaveLength(1);
         expect(statics.some((item) => item.color === COLORS.monumentGold)).toBe(true);
         expect(statics.some((item) => COLORS.buildings.includes(item.color))).toBe(false);
+    });
+
+    it('turns the plaza curb into a diamond whose corners touch the middle of each island edge', () => {
+        // The island covers x 0.5..1.5 and z -0.5..1.5, so it is taller than wide
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const curb = buildCity(island).statics.find((item) => item.color === COLORS.plazaCurb)!;
+        const corners = [[0.5, 0.5], [-0.5, 0.5], [-0.5, -0.5], [0.5, -0.5]]
+            .map(([lx, lz]) => point(curb.world, lx, 0, lz))
+            .map(([x, , z]) => `${x.toFixed(3)},${z.toFixed(3)}`)
+            .sort();
+        expect(corners).toEqual(['0.500,0.500', '1.000,-0.500', '1.000,1.500', '1.500,0.500']);
     });
 });

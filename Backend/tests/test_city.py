@@ -15,7 +15,12 @@ from conftest import (
     traffic_run,
 )
 from traffic_base.agent import PATIENCE, Car, Motorcycle
-from traffic_base.city_graph import DIRECTION_VECTORS, Position, is_legal_move
+from traffic_base.city_graph import (
+    DIRECTION_VECTORS,
+    Position,
+    is_diagonal,
+    is_legal_move,
+)
 from traffic_base.model import (
     DEFAULT_MAP,
     MAX_SPAWN_INTERVAL,
@@ -95,12 +100,17 @@ def test_cars_only_move_one_cell_with_the_street_direction(
 def test_diagonal_moves_never_cut_a_building_corner(
     city_run: TrafficRun,
 ) -> None:
-    """Checked on raw map cells, independent of the graph's own move rule."""
+    """Checked on raw map cells, independent of the graph's own move rule. The
+    diagonal roads on the glorieta's corners are the one place built to cut across."""
     model, history = city_run
     diagonals = [
         (a, b) for _, _, a, b in moves(history) if a[0] != b[0] and a[1] != b[1]
     ]
     for (x, y), (nx_, ny) in diagonals:
+        if is_diagonal(model.drivable[(x, y)]) or is_diagonal(
+            model.drivable[(nx_, ny)]
+        ):
+            continue
         assert (nx_, y) in model.drivable and (x, ny) in model.drivable
     assert len(diagonals) > 100
 

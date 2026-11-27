@@ -197,9 +197,14 @@ From `Backend/city_files/mapDictionary.json`:
 | `#` | Obstacle / building |
 | `D` | Destination |
 | `A` | Monument (center of the roundabout) |
+| `7` `9` `1` `3` | Diagonal road on the glorieta corners (numpad: `7` up-left, `9` up-right, `1` down-left, `3` down-right) |
 
 The two light groups share a 22-step cycle: `s` lights are green for the first 7 steps,
-then `S` lights for the next 15.
+then `S` lights for the next 15. The lights that feed the glorieta show yellow for the last
+2 steps of their green, and cars stop on yellow too.
+
+The glorieta on `2025_reforma.txt` is a diamond: cars cut diagonally over the island's
+four corners, and the paved diamond with the monument in the middle is off limits.
 
 ## Server API
 
@@ -232,7 +237,7 @@ Every spawn step puts a car (30% of them motorcycles) on each free map corner, u
 highest to lowest priority:
 
 1. No route available: wait
-2. Red light on the next cell: stop
+2. Red or yellow light on the next cell: stop
 3. Car or ambulance-reserved cell ahead: wait; every 3 blocked steps, look for a route
    around it
 4. Otherwise: drive one cell along the A* route

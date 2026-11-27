@@ -38,6 +38,8 @@ Static map data. Call it once after `/init`.
   "width": 36,
   "height": 35,
   "roads":        [{"x": 0, "z": 0, "direction": "Right"}],
+                 // direction is Up, Down, Left, Right, or UpLeft, UpRight, DownLeft,
+                 // DownRight on the four corners of the glorieta island
   "obstacles":    [{"x": 3, "z": 4}],
   "destinations": [{"x": 5, "z": 7}],
   "lights":       [{"id": "12", "x": 6, "z": 2, "direction": "Up"}],
@@ -70,7 +72,7 @@ Advances the model one step (if it is still running) and returns everything that
   "stats": {"step": 31, "running": true, "stopReason": null, "spawned": 16,
             "arrived": 9, "active": 7, "avgTripSteps": 18.2, "avgWaitSteps": 1.4,
             "emergenciesServed": 1},
-  "lights": [{"id": "12", "green": true}],
+  "lights": [{"id": "12", "green": true, "yellow": false}],
   "vehicles": [{"id": "1263", "kind": "car", "x": 34, "y": 0, "z": 27,
                 "heading": {"x": 0, "z": 1}, "state": "driving"},
                {"id": "1261", "kind": "ambulance", "x": 7.4, "y": 3.0, "z": 4.1,
@@ -80,6 +82,8 @@ Advances the model one step (if it is still running) and returns everything that
 }
 ```
 
+- `lights`: `green` is true while the light lets cars through; `yellow` is true in the
+  last 2 steps of that green, only on the lights around the glorieta.
 - `vehicles` holds every vehicle alive after the step. Ids are stable: create a mesh for a
   new id, move it while the id appears, delete it when the id is gone.
 - `kind` is `car`, `motorcycle` (same rules as a car, about 30% of spawns) or

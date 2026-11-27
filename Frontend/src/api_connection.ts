@@ -15,7 +15,7 @@
 
 import { SERVER_URL } from './config';
 
-export type Direction = 'Right' | 'Left' | 'Up' | 'Down';
+export type Direction = 'Right' | 'Left' | 'Up' | 'Down' | 'UpLeft' | 'UpRight' | 'DownLeft' | 'DownRight';
 
 export interface GridCell {
     x: number;
@@ -71,7 +71,7 @@ export interface StepFrame {
     step: number;
     running: boolean;
     stats: Stats;
-    lights: { id: string; green: boolean }[];
+    lights: { id: string; green: boolean; yellow: boolean }[];
     vehicles: VehicleFrame[];
 }
 
@@ -175,7 +175,8 @@ const cell = (o: Json, path: string): GridCell => ({ x: num(o, 'x', path), z: nu
 
 function road(o: Json, path: string): RoadCell {
     const direction = str(o, 'direction', path);
-    check(['Right', 'Left', 'Up', 'Down'].includes(direction), `${path}.direction`, 'Right, Left, Up or Down');
+    check(['Right', 'Left', 'Up', 'Down', 'UpLeft', 'UpRight', 'DownLeft', 'DownRight'].includes(direction),
+        `${path}.direction`, 'a straight or diagonal direction');
     return { ...cell(o, path), direction: direction as Direction };
 }
 
@@ -232,7 +233,7 @@ export function parseStep(value: unknown): StepFrame {
         step: num(o, 'step', 'step'),
         running: bool(o, 'running', 'step'),
         stats: stats(object(o.stats, 'step.stats'), 'step.stats'),
-        lights: list(o, 'lights', 'step', (l, p) => ({ id: str(l, 'id', p), green: bool(l, 'green', p) })),
+        lights: list(o, 'lights', 'step', (l, p) => ({ id: str(l, 'id', p), green: bool(l, 'green', p), yellow: l.yellow === true })),
         vehicles: list(o, 'vehicles', 'step', vehicle),
     };
 }

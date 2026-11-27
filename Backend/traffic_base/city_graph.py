@@ -12,6 +12,13 @@ Position = tuple[int, int]
 Vector = tuple[int, int]
 
 DIRECTION_VECTORS = {"Up": (0, 1), "Down": (0, -1), "Right": (1, 0), "Left": (-1, 0)}
+# Diagonal roads, only used on the corners of the glorieta island
+DIAGONAL_VECTORS = {
+    "UpLeft": (-1, 1),
+    "UpRight": (1, 1),
+    "DownLeft": (-1, -1),
+    "DownRight": (1, -1),
+}
 NEIGHBORS = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)]
 DIAGONAL_COST = math.sqrt(2)
 SIDEWAYS_COST = 1.5  # dearer than a diagonal, so cars only slide sideways to cross
@@ -23,6 +30,10 @@ def step(pos, move):
 
 def dot(a, b):
     return a[0] * b[0] + a[1] * b[1]
+
+
+def is_diagonal(direction):
+    return direction[0] != 0 and direction[1] != 0
 
 
 def is_legal_move(move, from_dir, to_dir):
@@ -57,7 +68,8 @@ def build_street_graph(drivable, destinations):
     """
     Directed graph of the drivable cells. Destinations are entered straight from any
     side and have no exits. Diagonal moves need road on both cells they pass between,
-    so cars never cut a building corner.
+    so cars never cut a building corner, except into or out of a diagonal road: that
+    is how cars cut across the corners of the glorieta.
     Args:
         drivable: Dictionary of every road or light cell -> its direction vector
         destinations: Set of destination cells
@@ -75,9 +87,14 @@ def build_street_graph(drivable, destinations):
                 continue
             elif not is_legal_move(move, from_dir, drivable[target]):
                 continue
-            elif straight or (
-                step(pos, (move[0], 0)) in drivable
-                and step(pos, (0, move[1])) in drivable
+            elif (
+                straight
+                or is_diagonal(from_dir)
+                or is_diagonal(drivable[target])
+                or (
+                    step(pos, (move[0], 0)) in drivable
+                    and step(pos, (0, move[1])) in drivable
+                )
             ):
                 if move == from_dir:
                     cost = 1.0

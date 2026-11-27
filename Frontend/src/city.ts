@@ -53,7 +53,10 @@ export const BAND_DASHES_RIGHT = [0, 0.5];
 export const BAND_DASHES_LEFT = [0.5, 0.5];
 export const BAND_PLAIN = [0.15, 0.2];
 
-const DIRECTIONS: Record<Direction, number[]> = { Right: [1, 0], Left: [-1, 0], Up: [0, 1], Down: [0, -1] };
+const DIRECTIONS: Record<string, number[]> = { Right: [1, 0], Left: [-1, 0], Up: [0, 1], Down: [0, -1] };
+// Diagonal roads, only on the corners of the glorieta island
+const DIAGONALS: Record<string, number[]> = { UpLeft: [-1, 1], UpRight: [1, 1], DownLeft: [-1, -1], DownRight: [1, -1] };
+const vectorOf = (direction: Direction): number[] => DIRECTIONS[direction] ?? DIAGONALS[direction];
 
 const key = (x: number, z: number): string => `${x},${z}`;
 
@@ -159,8 +162,8 @@ function building(cell: GridCell, kind: 'hospital' | 'helipad' | 'tower'): DrawI
     return items;
 }
 
-// "x,z" of the building cells joined to a monument: the glorieta's island, drawn as
-// a plaza. The server drives the square ring around it like any other street.
+// "x,z" of the building cells joined to a monument: the glorieta's island. The
+// server drives the square ring around it like any other street.
 export function plazaCells(city: CityData): Set<string> {
     const buildings = new Set(city.obstacles.map((cell) => key(cell.x, cell.z)));
     const plaza = new Set<string>();
@@ -182,6 +185,38 @@ export function plazaCells(city: CityData): Set<string> {
         }
     }
     return plaza;
+}
+
+// The island is plain street with a diamond plaza on it. Cars drive over the
+// island's corners (diagonal roads from the server) but never onto the diamond.
+// The diamond is a unit box turned 45 degrees and stretched to touch the edges:
+// T(center) * S(width / sqrt 2, height, depth / sqrt 2) * Ry(45)
+function glorietaIsland(plaza: Set<string>): DrawItem[] {
+    if (plaza.size === 0) {
+        return [];
+    }
+    const cells = [...plaza].map((id) => id.split(',').map(Number));
+    const xs = cells.map((cell) => cell[0]);
+    const zs = cells.map((cell) => cell[1]);
+    const minX = Math.min(...xs) - 0.5;
+    const maxX = Math.max(...xs) + 0.5;
+    const minZ = Math.min(...zs) - 0.5;
+    const maxZ = Math.max(...zs) + 0.5;
+    const center = V3.create((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+    const width = maxX - minX;
+    const depth = maxZ - minZ;
+
+    const diamond = (scale: number, height: number): Mat4 => M4.multiply(
+        M4.translation(V3.create(center[0], height / 2, center[2])),
+        M4.multiply(M4.scale(V3.create(scale * width / Math.SQRT2, height, scale * depth / Math.SQRT2)),
+            M4.rotationY(Math.PI / 4)));
+
+    const pavement = cells.map(([x, z]) => streetTile({ x, z }, [0, 1], BAND_PLAIN));
+    return [
+        ...pavement,
+        drawItem('box', diamond(1, 0.05), COLORS.plazaCurb, 0.6),
+        drawItem('box', diamond(0.85, 0.07), COLORS.plaza),
+    ];
 }
 
 // An Angel of Independence style column: stepped base, column, golden winged figure
@@ -212,9 +247,14 @@ export function buildCity(city: CityData): CityLayout {
     // Streets and traffic lights
     const flow = new Map<string, number[]>();
     for (const road of [...city.roads, ...city.lights]) {
-        flow.set(key(road.x, road.z), DIRECTIONS[road.direction]);
+        flow.set(key(road.x, road.z), vectorOf(road.direction));
     }
     for (const road of [...city.roads, ...city.lights]) {
+        // A diagonal corner is plain asphalt, laid square like the cells around it
+        if (road.direction in DIAGONALS) {
+            statics.push(streetTile(road, [0, 1], BAND_PLAIN));
+            continue;
+        }
         const ahead = DIRECTIONS[road.direction];
         statics.push(streetTile(road, ahead, textureBand(flow, road, ahead)));
     }
@@ -228,10 +268,7 @@ export function buildCity(city: CityData): CityLayout {
 
     // Buildings, with a street lamp on the sidewalk of those that face a road
     const plaza = plazaCells(city);
-    for (const id of plaza) {
-        const [x, z] = id.split(',').map(Number);
-        statics.push(drawItem('box', cellBox({ x, z }, 0, [1, 0.03, 1]), COLORS.plaza));
-    }
+    statics.push(...glorietaIsland(plaza));
     const pads = new Set(city.helipads.map((pad) => key(pad.x, pad.z)));
     for (const cell of city.obstacles) {
         if (plaza.has(key(cell.x, cell.z))) {

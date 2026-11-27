@@ -10,19 +10,20 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from traffic_base.agent import Destination, Obstacle, Road
-from traffic_base.city_graph import DIRECTION_VECTORS
+from traffic_base.city_graph import DIAGONAL_VECTORS, DIRECTION_VECTORS
 from traffic_base.model import CITY_FILES, DEFAULT_MAP, SPAWN_INTERVAL, CityModel
 
 logger = logging.getLogger(__name__)
 
-# Only these map files can be loaded, so a request can't open any other file.
+
 AVAILABLE_MAPS = {path.name for path in CITY_FILES.glob("*.txt")}
-DIRECTION_NAMES = {vector: name for name, vector in DIRECTION_VECTORS.items()}
+DIRECTION_NAMES = {
+    vector: name for name, vector in {**DIRECTION_VECTORS, **DIAGONAL_VECTORS}.items()
+}
 
 city_model = None
 
 app = Flask("Traffic example")
-# Any localhost port may call the server, since the dev server picks its own port.
 CORS(app, origins=[r"http://localhost(:\d+)?", r"http://127\.0\.0\.1(:\d+)?"])
 
 
@@ -35,8 +36,6 @@ def xz(pos):
     return {"x": pos[0], "z": pos[1]}
 
 
-# This route creates the model with the options in the JSON body. Missing options
-# take their default value.
 @app.route("/init", methods=["GET", "POST"])
 def init_model():
     global city_model
@@ -116,7 +115,9 @@ def step_model():
 
     lights = []
     for light in city_model.traffic_lights:
-        lights.append({"id": str(light.unique_id), "green": light.state})
+        lights.append(
+            {"id": str(light.unique_id), "green": light.state, "yellow": light.yellow}
+        )
 
     return jsonify(
         {

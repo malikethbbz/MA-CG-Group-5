@@ -60,6 +60,8 @@ class CityScene extends Scene {
     city: CityLayout | null = null;
     vehicles = new Map<string, TrackedVehicle>();
     lightGreen = new Map<string, boolean>();
+    // Ids of the lights showing yellow (only the ones around the glorieta have it)
+    lightYellow = new Set<string>();
     // Id of the vehicle the camera follows, if any
     following: string | null = null;
 
@@ -136,6 +138,7 @@ class CityScene extends Scene {
             await initModel(this.runOptions());
             this.vehicles = new Map();
             this.lightGreen = new Map();
+            this.lightYellow = new Set();
             this.following = null;
             this.hud.clearStatus();
             restarted = true;
@@ -173,6 +176,7 @@ class CityScene extends Scene {
     showFrame(frame: StepFrame): void {
         this.vehicles = syncVehicles(this.vehicles, frame.vehicles);
         this.lightGreen = new Map(frame.lights.map((light) => [light.id, light.green]));
+        this.lightYellow = new Set(frame.lights.filter((light) => light.yellow).map((light) => light.id));
         this.frameTime = performance.now();
         this.hud.showStats(frame.stats);
         if (frame.running) {
@@ -288,7 +292,10 @@ class CityScene extends Scene {
         // Traffic lights take their color from the last step; unlit until it arrives
         for (const [id, lamp] of this.city.lamps) {
             const green = this.lightGreen.get(id);
-            const color = green === undefined ? COLORS.lightPole : green ? COLORS.lightGreen : COLORS.lightRed;
+            let color = green === undefined ? COLORS.lightPole : green ? COLORS.lightGreen : COLORS.lightRed;
+            if (this.lightYellow.has(id)) {
+                color = COLORS.lightYellow;
+            }
             this.prepareObject({ ...lamp, color }, viewProjectionMatrix);
         }
     }

@@ -18,6 +18,7 @@ from conftest import (
     raw_map,
     traffic_run,
 )
+from traffic_base.agent import YELLOW_STEPS
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, Vector, step
 from traffic_base.model import SPAWN_INTERVAL, CityModel
 
@@ -27,6 +28,8 @@ ARROWS: dict[str, Vector] = {
     "^": DIRECTION_VECTORS["Up"],
     "v": DIRECTION_VECTORS["Down"],
 }
+# The island's corners are diagonal road, numbered like a numpad: 7 is up-left
+DIAGONALS: dict[str, Vector] = {"7": (-1, 1), "9": (1, 1), "1": (-1, -1), "3": (1, -1)}
 LIGHTS = "sS"
 RING_LANES = 2
 # Counter-clockwise seen from above with y growing north: east along the south side,
@@ -89,7 +92,8 @@ def flood_island(raw: list[str], start: Position) -> set[Position]:
         for move in DIRECTION_VECTORS.values():
             nxt = step(here, move)
             char = char_at(raw, nxt)
-            if char and char not in ARROWS and char not in LIGHTS and nxt not in island:
+            road = char in ARROWS or char in LIGHTS or char in DIAGONALS
+            if char and not road and nxt not in island:
                 island.add(nxt)
                 frontier.append(nxt)
     return island
@@ -130,10 +134,21 @@ def dot(a: Vector, b: Vector) -> int:
     return a[0] * b[0] + a[1] * b[1]
 
 
+def corners(glorieta: Glorieta) -> dict[str, Position]:
+    return {
+        "north-west": (glorieta.west, glorieta.north),
+        "north-east": (glorieta.east, glorieta.north),
+        "south-west": (glorieta.west, glorieta.south),
+        "south-east": (glorieta.east, glorieta.south),
+    }
+
+
 def test_the_island_is_a_plaza_around_one_monument(glorieta: Glorieta) -> None:
-    assert len(glorieta.island) == (glorieta.east - glorieta.west + 1) * (
-        glorieta.north - glorieta.south + 1
-    )  # a solid rectangle, so the flood fill did not leak into the city
+    assert (
+        len(glorieta.island)
+        == (glorieta.east - glorieta.west + 1) * (glorieta.north - glorieta.south + 1)
+        - 4
+    )  # a rectangle without its corners, so the flood fill did not leak
     assert {char_at(glorieta.raw, p) for p in glorieta.island} == {"#", "A"}
     assert len(glorieta.island) <= 25
 
@@ -148,16 +163,59 @@ def test_the_ring_is_two_lanes_of_counter_clockwise_road(glorieta: Glorieta) -> 
         assert max(alignment) == 1, f"ring cell {pos} does not go round"
     width = glorieta.east - glorieta.west + 1 + 2 * RING_LANES
     height = glorieta.north - glorieta.south + 1 + 2 * RING_LANES
-    assert len(ring) == width * height - len(glorieta.island)
+    # The island and its four diagonal corners sit inside the ring
+    assert len(ring) == width * height - len(glorieta.island) - 4
+
+
+def test_the_island_corners_are_diagonal_roads_going_round(glorieta: Glorieta) -> None:
+    """Each corner cuts across from one side of the ring to the next one,
+    counter-clockwise, so the ring looks like a diamond around the monument."""
+    for name, corner in corners(glorieta).items():
+        char = char_at(glorieta.raw, corner)
+        assert char in DIAGONALS, f"{name} corner {corner} is {char!r}"
+        north_or_south, east_or_west = name.split("-")
+        for side in (north_or_south, east_or_west):
+            assert dot(DIAGONALS[char], TANGENTS[side]) == 1, f"{name} goes clockwise"
+
+
+def test_a_car_turning_at_the_glorieta_cuts_across_the_island_corner(
+    glorieta: Glorieta,
+) -> None:
+    """For each corner, a car on the inner lane of one side that turns onto the next
+    side is routed diagonally over the corner instead of round the square."""
+    model = CityModel(map_name=REFORMA_MAP)
+    w, e, s, n = glorieta.west, glorieta.east, glorieta.south, glorieta.north
+    turns = {
+        # corner: (inner lane cell before the corner, inner lane cell after it)
+        "north-west": ((w + 1, n + 1), (w - 1, n - 1)),
+        "north-east": ((e + 1, n - 1), (e - 1, n + 1)),
+        "south-west": ((w - 1, s + 1), (w + 1, s - 1)),
+        "south-east": ((e - 1, s - 1), (e + 1, s + 1)),
+    }
+    for name, (start, goal) in turns.items():
+        route = model.route(start, goal)
+        assert route == [corners(glorieta)[name], goal], f"{name}: {route}"
+
+
+def test_cars_drive_over_the_island_corners(
+    glorieta: Glorieta, reforma_run: TrafficRun
+) -> None:
+    on_corners = set(corners(glorieta).values())
+    crossings = [
+        dst for _, _, _, dst in moves(reforma_run.history) if dst in on_corners
+    ]
+    assert len(crossings) >= 20
 
 
 def approaches(glorieta: Glorieta, model: CityModel) -> dict[Position, Vector]:
-    """Cells off the ring that point straight into it, with their direction."""
+    """Cells off the ring that point straight into it, with their direction. The
+    island's diagonal corners are part of the glorieta, not approaches."""
     ring = glorieta.ring()
+    inside = set(corners(glorieta).values())
     return {
         pos: direction
         for pos, direction in model.drivable.items()
-        if pos not in ring and step(pos, direction) in ring
+        if pos not in ring and pos not in inside and step(pos, direction) in ring
     }
 
 
@@ -232,3 +290,39 @@ def test_no_emergency_can_open_on_the_monument_plaza(glorieta: Glorieta) -> None
     assert not glorieta.island & set(model.helipads)
     # Buildings across the ring still take calls
     assert len(model.landing_spots) > 100
+
+
+def test_only_the_lights_feeding_the_glorieta_have_a_yellow_phase(
+    glorieta: Glorieta,
+) -> None:
+    model = CityModel(map_name=REFORMA_MAP)
+    feeders = approaches(glorieta, model)
+    with_yellow = {
+        light.cell.coordinate for light in model.traffic_lights if light.has_yellow
+    }
+    assert with_yellow == set(feeders)
+
+
+def test_a_yellow_light_is_the_end_of_its_green(glorieta: Glorieta) -> None:
+    model = CityModel(map_name=REFORMA_MAP)
+    light = next(light for light in model.traffic_lights if light.has_yellow)
+    seen = []
+    for _ in range(light.cycle):
+        model.step()
+        seen.append("Y" if light.yellow else "G" if light.state else "R")
+    # Green, then YELLOW_STEPS of yellow, then red, in one cycle
+    colors = "".join(seen)
+    assert colors.count("Y") == YELLOW_STEPS
+    assert "GY" in colors and "YR" in colors
+    assert colors.count("Y") + colors.count("G") == light.green_steps
+
+
+def test_cars_never_drive_into_a_yellow_light(reforma_run: TrafficRun) -> None:
+    model, history = reforma_run
+    lights = {t.cell.coordinate: t for t in model.traffic_lights if t.has_yellow}
+    entries = 0
+    for t, car_id, src, dst in moves(history):
+        if dst in lights and src not in lights:
+            entries += 1
+            assert not lights[dst].is_yellow(t), f"car {car_id} ran a yellow at {t}"
+    assert entries > 50

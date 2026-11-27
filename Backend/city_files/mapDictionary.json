@@ -7,5 +7,9 @@
     "v" : "Down",
     "^" : "Up",
     "D" : "Destination",
-    "A" : "Monument"
+    "A" : "Monument",
+    "7" : "UpLeft",
+    "9" : "UpRight",
+    "1" : "DownLeft",
+    "3" : "DownRight"
 }

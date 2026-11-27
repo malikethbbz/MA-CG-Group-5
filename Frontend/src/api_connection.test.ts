@@ -17,7 +17,7 @@ const STEP = {
     step: 31, running: true,
     stats: { step: 31, running: true, stopReason: null, spawned: 16, arrived: 9, active: 7,
         avgTripSteps: 18.2, avgWaitSteps: 1.4, emergenciesServed: 1 },
-    lights: [{ id: '12', green: true }],
+    lights: [{ id: '12', green: true, yellow: false }],
     vehicles: [{ id: '1263', kind: 'car', x: 34, y: 0, z: 27, heading: { x: 0, z: 1 }, state: 'driving' }],
     events: [{ type: 'arrived', id: '1276' }],
 };
