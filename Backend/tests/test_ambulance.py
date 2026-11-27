@@ -19,8 +19,8 @@ from traffic_base.ambulance import (
 )
 from traffic_base.city_graph import DIRECTION_VECTORS, Position, Vector
 from traffic_base.model import DEFAULT_MAP, SPAWN_INTERVAL, CityModel
-from traffic_base.vehicle import Event
 
+Event = dict[str, str | int]  # an /step event: type, id, and x, z for some types
 ARROWS: dict[str, Vector] = {
     ">": DIRECTION_VECTORS["Right"],
     "<": DIRECTION_VECTORS["Left"],

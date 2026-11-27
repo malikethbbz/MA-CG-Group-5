@@ -7,7 +7,7 @@ from typing import NamedTuple
 import pytest
 
 from traffic_base.city_graph import Position
-from traffic_base.model import CITY_FILES, CityModel, SpawnPoints
+from traffic_base.model import CITY_FILES, CityModel
 
 TinyCity = Callable[..., CityModel]
 History = list[dict[int, Position]]
@@ -28,7 +28,7 @@ def tiny_city(tmp_path: Path) -> TinyCity:
         rows: list[str],
         short_green: int = 7,
         long_green: int = 15,
-        spawn_points: SpawnPoints = "corners",
+        spawn_points: str = "corners",
     ) -> CityModel:
         symbols = {
             ">": "Right",
@@ -71,7 +71,7 @@ class TrafficRun(NamedTuple):
 def traffic_run(
     map_name: str,
     spawn_interval: int,
-    spawn_points: SpawnPoints = "corners",
+    spawn_points: str = "corners",
     steps: int = TRAFFIC_STEPS,
 ) -> TrafficRun:
     """A real map run with seed 42. Cached so every test module reads the same run;

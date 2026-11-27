@@ -130,7 +130,7 @@ def test_cars_never_enter_a_red_light(city_run: TrafficRun) -> None:
         if dst in lights and src not in lights
     ]
     for t, car_id, pos in entries:
-        assert lights[pos]._is_green(t), f"car {car_id} ran a red at {pos}, step {t}"
+        assert lights[pos].is_green(t), f"car {car_id} ran a red at {pos}, step {t}"
     assert len(entries) > 50
 
 
