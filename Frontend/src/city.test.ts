@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest';
+import { M4, V3, type Mat4 } from '../libs/3d-lib';
+import type { CityData, Direction, RoadCell } from './api_connection';
+import { buildCity, HELIPAD_ROOF, plazaCells, streetArrays, type DrawItem } from './city';
+import { COLORS } from './config';
+import streetObj from '../assets/models/street/street.obj?raw';
+import ambulanceSource from '../../Backend/traffic_base/ambulance.py?raw';
+import reformaMap from '../../Backend/city_files/2025_reforma.txt?raw';
+import baseMap from '../../Backend/city_files/2025_base.txt?raw';
+
+const point = (m: Mat4, x: number, y: number, z: number): number[] => [...M4.transformPoint(m, V3.create(x, y, z))];
+
+function city(roads: RoadCell[], extra: Partial<CityData> = {}): CityData {
+    return {
+        width: 10, height: 10, roads, obstacles: [], destinations: [], lights: [],
+        hospital: null, helipads: [], landmarks: [], ...extra,
+    };
+}
+
+// The buildings and the monument of a map file, the way the server reads it
+// (file row 0 is the top, so z = height - row - 1)
+function mapCity(text: string): CityData {
+    const rows = text.split('\n').map((row) => row.trim()).filter(Boolean);
+    const obstacles: CityData['obstacles'] = [];
+    const landmarks: CityData['landmarks'] = [];
+    rows.forEach((row, r) => [...row].forEach((char, x) => {
+        const z = rows.length - r - 1;
+        if (char === '#') {
+            obstacles.push({ x, z });
+        } else if (char === 'A') {
+            landmarks.push({ x, z });
+        }
+    }));
+    return { ...city([]), obstacles, landmarks };
+}
+
+describe('streetArrays', () => {
+    const arrays = streetArrays(streetObj) as Record<string, { data: number[] }>;
+    const position = arrays.a_position.data;
+    const normal = arrays.a_normal.data;
+    const uv = arrays.a_texCoord.data;
+
+    it('fits the street model into a unit cube, with the texture once across and along it', () => {
+        expect(Math.min(...position)).toBeCloseTo(-0.5);
+        expect(Math.max(...position)).toBeCloseTo(0.5);
+        for (let i = 0; i < position.length / 3; i++) {
+            // u runs along local z (the lane), v across it along local x
+            expect(uv[2 * i]).toBeCloseTo(position[3 * i + 2] + 0.5);
+            expect(uv[2 * i + 1]).toBeCloseTo(position[3 * i] + 0.5);
+        }
+    });
+
+    it('keeps a top face that points up and is counter-clockwise seen from above', () => {
+        let topTriangles = 0;
+        for (let t = 0; t < position.length / 9; t++) {
+            if (normal[9 * t + 1] < 0.99) {
+                continue;
+            }
+            topTriangles++;
+            const [a, b, c] = [0, 1, 2].map((k) => V3.create(position[9 * t + 3 * k], position[9 * t + 3 * k + 1], position[9 * t + 3 * k + 2]));
+            const cross = V3.cross(V3.subtract(b, a), V3.subtract(c, a));
+            // Front faces are counter-clockwise, so the face normal must point up as well
+            expect(cross[1]).toBeGreaterThan(0);
+        }
+        expect(topTriangles).toBe(2);
+    });
+});
+
+describe('street tiles', () => {
+    const streets = (items: DrawItem[]) => items.filter((item) => item.shape === 'street');
+
+    // Texture v (across the lane) where a tile's local x edge lands in the world
+    function edgeV(tile: DrawItem, worldPoint: (p: number[]) => boolean): number | undefined {
+        for (const side of [-0.5, 0.5]) {
+            if (worldPoint(point(tile.world, side, 0.5, 0))) {
+                return tile.band![0] + tile.band![1] * (side + 0.5);
+            }
+        }
+        return undefined;
+    }
+
+    for (const [direction, across] of [['Up', 'x'], ['Down', 'x'], ['Left', 'z'], ['Right', 'z']] as [Direction, string][]) {
+        it(`puts the dashes between the two lanes of a street going ${direction}, the yellow lines outside`, () => {
+            // Two lanes side by side at 3 and 4 across the street, cells 0..9 along it
+            const roads: RoadCell[] = [];
+            for (let along = 0; along < 10; along++) {
+                for (const lane of [3, 4]) {
+                    roads.push(across === 'x' ? { x: lane, z: along, direction } : { x: along, z: lane, direction });
+                }
+            }
+            const tiles = streets(buildCity(city(roads)).statics);
+            const acrossOf = (p: number[]) => (across === 'x' ? p[0] : p[2]);
+            for (const tile of tiles) {
+                expect(edgeV(tile, (p) => Math.abs(acrossOf(p) - 3.5) < 1e-6)).toBeCloseTo(0.5);
+                const outer = edgeV(tile, (p) => Math.abs(acrossOf(p) - 3.5) > 0.9);
+                expect([0, 1]).toContain(outer);
+            }
+        });
+    }
+
+    it('shows plain asphalt next to a crossing street', () => {
+        const roads: RoadCell[] = [
+            { x: 3, z: 5, direction: 'Up' }, { x: 4, z: 5, direction: 'Right' }, { x: 3, z: 6, direction: 'Up' },
+        ];
+        const tiles = streets(buildCity(city(roads)).statics);
+        const at = (x: number, z: number) => tiles.find((t) => Math.abs(t.world[12] - x) < 1e-6 && Math.abs(t.world[14] - z) < 1e-6)!;
+        expect(at(3, 5).band).toEqual([0.15, 0.2]);
+        expect(at(3, 6).band).not.toEqual([0.15, 0.2]);
+    });
+});
+
+describe('buildCity', () => {
+    it('gives each traffic light one lamp, keyed by its id, on top of its pole', () => {
+        const layout = buildCity(city([], { lights: [{ id: '12', x: 2, z: 0, direction: 'Right' }] }));
+        expect([...layout.lamps.keys()]).toEqual(['12']);
+        expect(layout.lamps.get('12')!.world[13]).toBeGreaterThan(0.5);
+    });
+
+    it('builds the hospital and its helipads as tall as the roof the server parks ambulances on', () => {
+        // The server's constant, read from its source so the two sides cannot drift apart
+        const serverRoof = Number(/^ROOF_ALTITUDE = ([\d.]+)/m.exec(ambulanceSource)?.[1]);
+        expect(serverRoof).toBe(HELIPAD_ROOF);
+        const obstacles = [{ x: 2, z: 2 }, { x: 3, z: 2 }, { x: 7, z: 7 }];
+        const statics = buildCity(city([], { obstacles, hospital: { x: 2, z: 2 }, helipads: [{ x: 3, z: 2 }] })).statics;
+        const roofAt = (x: number) => Math.max(...statics
+            .filter((item) => Math.abs(item.world[12] - x) < 1e-6 && Math.abs(item.world[14] - 2) < 1e-6)
+            .map((item) => point(item.world, 0, -0.5, 0)[1]));
+        expect(roofAt(2)).toBeCloseTo(HELIPAD_ROOF);
+        expect(roofAt(3)).toBeCloseTo(HELIPAD_ROOF);
+        expect(statics.filter((item) => item.color === COLORS.hospitalCross)).toHaveLength(2);
+        expect(statics.filter((item) => item.color === COLORS.helipad)).toHaveLength(1);
+    });
+});
+
+describe('the glorieta plaza', () => {
+    it('is the island of buildings around the Reforma monument, and absent on the base map', () => {
+        const reforma = mapCity(reformaMap);
+        const plaza = plazaCells(reforma);
+        // A 5 x 3 island centred on the monument
+        const { x, z } = reforma.landmarks[0];
+        expect(plaza.size).toBe(15);
+        expect(plaza.has(`${x},${z}`)).toBe(true);
+        expect(plaza.has(`${x - 2},${z - 1}`) && plaza.has(`${x + 2},${z + 1}`)).toBe(true);
+        expect(plazaCells(mapCity(baseMap)).size).toBe(0);
+    });
+
+    it('does not mistake a whole city block next to a monument for an island', () => {
+        const block = Array.from({ length: 36 }, (_, i) => ({ x: i % 6, z: Math.floor(i / 6) }));
+        expect(plazaCells(city([], { obstacles: block, landmarks: [{ x: 2, z: 2 }] })).size).toBe(0);
+    });
+
+    it('draws the plaza and the monument instead of towers on the island', () => {
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const statics = buildCity(island).statics;
+        // The island cell and the monument's own cell
+        expect(statics.filter((item) => item.color === COLORS.plaza)).toHaveLength(2);
+        expect(statics.some((item) => item.color === COLORS.monumentGold)).toBe(true);
+        expect(statics.some((item) => COLORS.buildings.includes(item.color))).toBe(false);
+    });
+});
