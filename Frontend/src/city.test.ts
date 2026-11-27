@@ -175,7 +175,7 @@ describe('the glorieta plaza', () => {
         // Island half extents (0.5, 1), so the line's diamond has corners at (+-1.5, 0) and (0, +-2)
         const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
         const dashes = buildCity(island).statics.filter((item) => item.color === COLORS.laneDash);
-        expect(dashes).toHaveLength(24);
+        expect(dashes).toHaveLength(16);
         for (const dash of dashes) {
             // Both ends of every dash lie on the diamond, so it points along its side
             for (const end of [-0.5, 0.5]) {
@@ -185,12 +185,47 @@ describe('the glorieta plaza', () => {
         }
     });
 
-    it('draws no street tiles on the glorieta, only around it', () => {
-        const roads = [{ x: 3, z: 4, direction: 'Up' as const }, { x: 0, z: 0, direction: 'Up' as const }];
+    it('keeps normal street tiles on the outer lane and the floor on the inner lane', () => {
+        // Island x 4.5..5.5, z 3.5..5.5: (4, 4) is on the inner lane, (3, 4) on the outer one
+        const roads = [{ x: 4, z: 4, direction: 'Up' as const }, { x: 3, z: 4, direction: 'Up' as const },
+            { x: 0, z: 0, direction: 'Up' as const }];
         const island = city(roads, { obstacles: [{ x: 5, z: 4 }], landmarks: [{ x: 5, z: 5 }] });
         const tiles = buildCity(island).statics.filter((item) => item.shape === 'street');
         const at = (x: number, z: number) => tiles.some((t) => t.world[12] === x && t.world[14] === z);
-        expect(at(3, 4)).toBe(false);
+        expect(at(4, 4)).toBe(false);
+        expect(at(3, 4)).toBe(true);
         expect(at(0, 0)).toBe(true);
+    });
+
+    it('points every arrow counter-clockwise, the one way cars drive the ring', () => {
+        // Island centred on (1, 0.5)
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const pieces = buildCity(island).statics.filter((item) => item.color === COLORS.laneArrow);
+        expect(pieces).toHaveLength(4 * 2 * 3);
+        // Each arrow is a shaft and two head pieces; the shaft is the arrow's heading
+        const shafts = pieces.filter((_, i) => i % 3 === 0);
+        for (const piece of shafts) {
+            const [cx, , cz] = point(piece.world, 0, 0, 0);
+            const [bx, , bz] = point(piece.world, 0, 0, -0.5);
+            const [fx, , fz] = point(piece.world, 0, 0, 0.5);
+            // Counter-clockwise seen from above: the radius turns left onto the heading
+            const turn = (cx - 1) * (fz - bz) - (cz - 0.5) * (fx - bx);
+            expect(turn).toBeGreaterThan(0);
+        }
+    });
+
+    it('closes each arrow head into a tip instead of a fork', () => {
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const pieces = buildCity(island).statics.filter((item) => item.color === COLORS.laneArrow);
+        // Each arrow is a shaft and then its two head pieces
+        for (let i = 0; i < pieces.length; i += 3) {
+            const [left, right] = [pieces[i + 1], pieces[i + 2]];
+            const gap = (end: number) => {
+                const [ax, , az] = point(left.world, 0, 0, end);
+                const [bx, , bz] = point(right.world, 0, 0, end);
+                return Math.hypot(ax - bx, az - bz);
+            };
+            expect(gap(0.5)).toBeLessThan(gap(-0.5));
+        }
     });
 });

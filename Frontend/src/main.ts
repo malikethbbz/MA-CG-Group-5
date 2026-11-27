@@ -79,7 +79,7 @@ class CityScene extends Scene {
             street: { vs: vsPhongGLSL, fs: fsStreetGLSL },
         });
 
-        // Every piece of the city is a copy of one of these two objects
+        // Every piece of the city is a copy of one of these objects
         this.addObject('box', 'phong', cubeFaceColors(0.5), COLORS.ground);
         const street = this.addObject('street', 'street', streetArrays(streetObj), COLORS.ground);
         street.texture = twgl.createTexture(gl, {

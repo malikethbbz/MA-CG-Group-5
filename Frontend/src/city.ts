@@ -187,14 +187,14 @@ export function plazaCells(city: CityData): Set<string> {
     return plaza;
 }
 
-// The glorieta has its own floor instead of the street tiles: one asphalt slab
-// over the island and its two lanes, a dashed diamond between the lanes, and the
-// paved diamond with the monument in the middle. Cars drive the ring (cutting its
-// corners diagonally) but never onto the paved diamond.
+// The glorieta has its own floor instead of the street tiles.  
+// Cars drive the ring (cutting its corners diagonally) but never onto the paved diamond.
 export const RING_LANES = 2;
+// The outer lane keeps the normal street tiles, so the glorieta's border has the
+// same edges as every other street; the floor covers the inner lane and the island
+const FLOOR_LANES = 1;
 // How many dashes each side of the lane line gets
-const DASHES_PER_SIDE = 6;
-
+const DASHES_PER_SIDE = 4;
 export interface GlorietaArea {
     center: number[];
     // Half width (x) and half depth (z) of the island
@@ -224,8 +224,8 @@ export function inGlorieta(area: GlorietaArea | null, cell: GridCell): boolean {
     if (area === null) {
         return false;
     }
-    return Math.abs(cell.x - area.center[0]) < area.half[0] + RING_LANES
-        && Math.abs(cell.z - area.center[1]) < area.half[1] + RING_LANES;
+    return Math.abs(cell.x - area.center[0]) < area.half[0] + FLOOR_LANES
+        && Math.abs(cell.z - area.center[1]) < area.half[1] + FLOOR_LANES;
 }
 
 // A diamond with corners at (+-a, 0) and (0, +-b) around the center: a unit box
@@ -258,16 +258,56 @@ function diamondDashes(area: GlorietaArea, a: number, b: number): DrawItem[] {
     return dashes;
 }
 
+// The ring is one way, counter-clockwise seen from above (the same way the server
+// drives it), so the arrows go round the diamond in the same order as its corners.
+const ARROWS_PER_SIDE = 2;
+
+// One arrow lying on the floor and pointing along +z of `parent`: a shaft and two
+// pieces of the head turned 45 degrees each way
+function arrow(parent: Mat4): DrawItem[] {
+    const piece = (offset: number[], turn: number, size: number[]): DrawItem => {
+        const local = M4.multiply(M4.translation(V3.create(offset[0], offset[1], offset[2])),
+            M4.multiply(M4.rotationY(turn), M4.scale(V3.create(size[0], size[1], size[2]))));
+        return drawItem('box', M4.multiply(parent, local), COLORS.laneArrow, 0.6);
+    };
+    return [
+        piece([0, 0.012, -0.1], 0, [0.08, 0.01, 0.4]),
+        // Each head piece leans in toward the middle, so the two meet at the tip
+        piece([0.07, 0.012, 0.12], -Math.PI / 4, [0.06, 0.01, 0.22]),
+        piece([-0.07, 0.012, 0.12], Math.PI / 4, [0.06, 0.01, 0.22]),
+    ];
+}
+
+// Arrows along the diamond with corners at (+-a, 0) and (0, +-b)
+function diamondArrows(area: GlorietaArea, a: number, b: number): DrawItem[] {
+    const corners = [[a, 0], [0, b], [-a, 0], [0, -b]];
+    const arrows: DrawItem[] = [];
+    for (let side = 0; side < 4; side++) {
+        const [x0, z0] = corners[side];
+        const [x1, z1] = corners[(side + 1) % 4];
+        const yaw = Math.atan2(x1 - x0, z1 - z0);
+        for (let i = 0; i < ARROWS_PER_SIDE; i++) {
+            const t = (i + 1) / (ARROWS_PER_SIDE + 1);
+            const position = V3.create(area.center[0] + x0 + t * (x1 - x0), 0,
+                area.center[1] + z0 + t * (z1 - z0));
+            arrows.push(...arrow(M4.multiply(M4.translation(position), M4.rotationY(yaw))));
+        }
+    }
+    return arrows;
+}
+
 function glorietaFloor(area: GlorietaArea): DrawItem[] {
     const [halfX, halfZ] = area.half;
-    const floorX = 2 * (halfX + RING_LANES);
-    const floorZ = 2 * (halfZ + RING_LANES);
+    const floorX = 2 * (halfX + FLOOR_LANES);
+    const floorZ = 2 * (halfZ + FLOOR_LANES);
     const slab = M4.multiply(M4.translation(V3.create(area.center[0], -0.5 * ROAD_THICKNESS, area.center[1])),
         M4.scale(V3.create(floorX, ROAD_THICKNESS, floorZ)));
     return [
         { ...drawItem('street', slab, COLORS.ground), band: BAND_PLAIN },
         // The lane line runs halfway between the island and the outer edge
         ...diamondDashes(area, halfX + RING_LANES / 2, halfZ + RING_LANES / 2),
+        // On the inner lane, between the paved diamond and the lane line
+        ...diamondArrows(area, halfX + 0.5, halfZ + 0.5),
         drawItem('box', diamondBox(area, halfX, halfZ, 0.05), COLORS.plazaCurb, 0.6),
         drawItem('box', diamondBox(area, 0.85 * halfX, 0.85 * halfZ, 0.07), COLORS.plaza),
     ];
