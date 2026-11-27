@@ -99,8 +99,8 @@ def test_static_endpoints_report_every_map_cell(client: FlaskClient) -> None:
         )
     }
     assert counts == {
-        "/getRoads": 772,
-        "/getObstacles": 414,
+        "/getRoads": 782,
+        "/getObstacles": 440,
         "/getDestinations": 26,
         "/getTrafficLights": 48,
     }
@@ -154,9 +154,9 @@ def test_city_holds_every_cell_the_old_endpoints_report(client: FlaskClient) -> 
         )
     }
     assert {key: len(city[key]) for key in old} == old
-    assert old == {"roads": 772, "obstacles": 414, "destinations": 26, "lights": 48}
-    assert (city["width"], city["height"]) == (36, 35)
-    assert city["helipads"] == [{"x": 2, "z": 2}, {"x": 33, "z": 32}]
+    assert old == {"roads": 782, "obstacles": 440, "destinations": 26, "lights": 48}
+    assert (city["width"], city["height"]) == (36, 36)
+    assert city["helipads"] == [{"x": 2, "z": 2}, {"x": 33, "z": 33}]
 
 
 def test_city_lists_the_reforma_monument_as_a_landmark_and_never_as_an_obstacle(
@@ -164,14 +164,14 @@ def test_city_lists_the_reforma_monument_as_a_landmark_and_never_as_an_obstacle(
 ) -> None:
     assert client.post("/init", json={"map": REFORMA_MAP}).status_code == 200
     city = client.get("/city").get_json()
-    # File row 14, column 15 of a 35-row map is grid (15, 35 - 14 - 1).
-    assert city["landmarks"] == [{"kind": "monument", "x": 15, "z": 20}]
+    # File row 14, column 15 of a 36-row map is grid (15, 36 - 14 - 1).
+    assert city["landmarks"] == [{"kind": "monument", "x": 15, "z": 21}]
     for key in ("roads", "obstacles", "destinations", "lights"):
-        assert all((c["x"], c["z"]) != (15, 20) for c in city[key])
+        assert all((c["x"], c["z"]) != (15, 21) for c in city[key])
     frames = [client.get("/step").get_json() for _ in range(100)]
     on_road = [v for f in frames for v in f["vehicles"] if v["y"] == 0]
     assert on_road
-    assert all((v["x"], v["z"]) != (15, 20) for v in on_road)
+    assert all((v["x"], v["z"]) != (15, 21) for v in on_road)
 
 
 def test_the_base_map_has_no_landmarks(client: FlaskClient) -> None:
@@ -285,7 +285,7 @@ def test_init_with_edge_spawn_points_spawns_beyond_the_four_corners(
 ) -> None:
     client.post("/init", json={"spawnInterval": 1})
     corner_spawns = spawn_cells(client, 10)
-    assert corner_spawns and corner_spawns <= {(0, 0), (35, 0), (0, 34), (35, 34)}
+    assert corner_spawns and corner_spawns <= {(0, 0), (35, 0), (0, 35), (35, 35)}
     response = client.post("/init", json={"spawnPoints": "edges", "spawnInterval": 1})
     assert response.status_code == 200
     assert len(spawn_cells(client, 10)) > 4
