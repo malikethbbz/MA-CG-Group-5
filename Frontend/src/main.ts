@@ -21,7 +21,7 @@ import { cubeFaceColors } from '../libs/shapes';
 import { getCity, getStep, initModel, type StepFrame } from './api_connection';
 import { CityCamera } from './camera';
 import { buildCity, streetArrays, type CityLayout, type DrawItem } from './city';
-import { COLORS, DEFAULT_MAP, MAP_CHOICES, RETRY_DELAY_MS } from './config';
+import { COLORS, MAP, RETRY_DELAY_MS } from './config';
 import { Hud } from './hud';
 import { frameAlpha, syncVehicles, vehicleItems, vehiclePose, type TrackedVehicle } from './vehicles';
 
@@ -43,12 +43,6 @@ const SHININESS = 40;
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-// The map is in the URL (?map=...), so choosing another one reloads the page
-function mapFromUrl(): string {
-    const map = new URLSearchParams(window.location.search).get('map');
-    return map !== null && Object.values(MAP_CHOICES).includes(map) ? map : DEFAULT_MAP;
-}
-
 class CityScene extends Scene {
 
     // Variable for the scene settings, changed from the GUI
@@ -58,7 +52,7 @@ class CityScene extends Scene {
         carsPerSpawn: 4,
         ambulances: 2,
         emergencyChance: 1.0,
-        map: mapFromUrl(),
+        map: MAP,
     };
 
     camera = new CityCamera(30, CAMERA_AZIMUTH, CAMERA_ELEVATION, [0, 0, 0], 36);
@@ -334,11 +328,6 @@ class CityScene extends Scene {
         simFolder.add(this.settings, 'carsPerSpawn', 1, 4, 1).name('Vehículos por paso');
         simFolder.add(this.settings, 'ambulances', 0, 2, 1).name('Ambulancias');
         simFolder.add(this.settings, 'emergencyChance', 0, 1, 0.1).name('Prob. de emergencia');
-        simFolder.add(this.settings, 'map', MAP_CHOICES).name('Mapa').onChange((map: string) => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('map', map);
-            window.location.assign(url);
-        });
         simFolder.add(actions, 'restart').name('Reiniciar simulación');
 
         // listen() keeps the sliders in step with the camera keys

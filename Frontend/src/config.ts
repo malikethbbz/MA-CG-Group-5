@@ -13,12 +13,8 @@ export const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://loc
 // How long to wait before trying again while the server is down
 export const RETRY_DELAY_MS = 1500;
 
-// Maps the server can load; the assignment's map is the default
-export const MAP_CHOICES: Record<string, string> = {
-    'Original (2025)': '2025_base.txt',
-    'Glorieta Reforma': '2025_reforma.txt',
-};
-export const DEFAULT_MAP = '2025_base.txt';
+// The map we run: the 2025 city with the Reforma glorieta
+export const MAP = '2025_reforma.txt';
 
 // '#rrggbb' to an RGBA color in [0, 1], as the shaders expect
 export function hex(code: string): Color {

@@ -160,8 +160,8 @@ cd Frontend
 npx vite
 ```
 
-Open http://localhost:5173/. To open another map, pick it in the **Mapa** menu (inside **Simulación**)
-or add it to the URL, for example http://localhost:5173/?map=2025_reforma.txt.
+Open http://localhost:5173/. The page runs the `2025_reforma.txt` map, the 2025 city
+with the Reforma glorieta.
 
 Controls: arrows rotate the camera, `W` `A` `S` `D` pan, `+` / `-` zoom.
 
@@ -211,7 +211,7 @@ then `S` lights for the next 15.
 
 | `/init` option | Default | Meaning |
 |----------------|---------|---------|
-| `map` | `"2025_base.txt"` | Any `.txt` map in `Backend/city_files/`; the GUI offers `2025_base.txt` and `2025_reforma.txt` |
+| `map` | `"2025_base.txt"` | Any `.txt` map in `Backend/city_files/`; the GUI always sends `2025_reforma.txt` |
 | `seed` | `42` | Random seed |
 | `spawnInterval` | `10` | Steps between spawns, 1 to 10 |
 | `carsPerSpawn` | `4` | Most cars a spawn step places on the free corners, 1 to 4 |
