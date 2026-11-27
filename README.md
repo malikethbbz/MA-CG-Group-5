@@ -42,8 +42,8 @@ and extends it:
 
 - Cars spawn at the corners of the map and drive to a destination with an A* route.
 - Traffic lights in two groups, so crossing streets are never green at the same time.
-- Flying ambulances that leave from a hospital, answer emergencies and land on a
-  reserved road cell.
+- Flying ambulances that park on the hospital and the building next to it, answer
+  emergencies and land on a reserved road cell.
 - A roundabout (glorieta) around a monument on the `2025_reforma.txt` map.
 - A 3D city with buildings, textured streets and street lamps.
 
@@ -211,7 +211,7 @@ then `S` lights for the next 15.
 
 | `/init` option | Default | Meaning |
 |----------------|---------|---------|
-| `map` | `"2025_base.txt"` | `2025_base.txt` or `2025_reforma.txt` |
+| `map` | `"2025_base.txt"` | Any `.txt` map in `Backend/city_files/`; the GUI offers `2025_base.txt` and `2025_reforma.txt` |
 | `seed` | `42` | Random seed |
 | `spawnInterval` | `10` | Steps between spawns, 1 to 10 |
 | `carsPerSpawn` | `4` | Most cars a spawn step places on the free corners, 1 to 4 |
