@@ -187,13 +187,24 @@ export function plazaCells(city: CityData): Set<string> {
     return plaza;
 }
 
-// The island is plain street with a diamond plaza on it. Cars drive over the
-// island's corners (diagonal roads from the server) but never onto the diamond.
-// The diamond is a unit box turned 45 degrees and stretched to touch the edges:
-// T(center) * S(width / sqrt 2, height, depth / sqrt 2) * Ry(45)
-function glorietaIsland(plaza: Set<string>): DrawItem[] {
+// The glorieta has its own floor instead of the street tiles: one asphalt slab
+// over the island and its two lanes, a dashed diamond between the lanes, and the
+// paved diamond with the monument in the middle. Cars drive the ring (cutting its
+// corners diagonally) but never onto the paved diamond.
+export const RING_LANES = 2;
+// How many dashes each side of the lane line gets
+const DASHES_PER_SIDE = 6;
+
+export interface GlorietaArea {
+    center: number[];
+    // Half width (x) and half depth (z) of the island
+    half: number[];
+}
+
+// The island's bounding box, or null when the map has no glorieta
+export function glorietaArea(plaza: Set<string>): GlorietaArea | null {
     if (plaza.size === 0) {
-        return [];
+        return null;
     }
     const cells = [...plaza].map((id) => id.split(',').map(Number));
     const xs = cells.map((cell) => cell[0]);
@@ -202,20 +213,63 @@ function glorietaIsland(plaza: Set<string>): DrawItem[] {
     const maxX = Math.max(...xs) + 0.5;
     const minZ = Math.min(...zs) - 0.5;
     const maxZ = Math.max(...zs) + 0.5;
-    const center = V3.create((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
-    const width = maxX - minX;
-    const depth = maxZ - minZ;
+    return {
+        center: [(minX + maxX) / 2, (minZ + maxZ) / 2],
+        half: [(maxX - minX) / 2, (maxZ - minZ) / 2],
+    };
+}
 
-    const diamond = (scale: number, height: number): Mat4 => M4.multiply(
-        M4.translation(V3.create(center[0], height / 2, center[2])),
-        M4.multiply(M4.scale(V3.create(scale * width / Math.SQRT2, height, scale * depth / Math.SQRT2)),
-            M4.rotationY(Math.PI / 4)));
+// True for a cell on the island or on the two lanes around it
+export function inGlorieta(area: GlorietaArea | null, cell: GridCell): boolean {
+    if (area === null) {
+        return false;
+    }
+    return Math.abs(cell.x - area.center[0]) < area.half[0] + RING_LANES
+        && Math.abs(cell.z - area.center[1]) < area.half[1] + RING_LANES;
+}
 
-    const pavement = cells.map(([x, z]) => streetTile({ x, z }, [0, 1], BAND_PLAIN));
+// A diamond with corners at (+-a, 0) and (0, +-b) around the center: a unit box
+// turned 45 degrees and stretched, T(center) * S(a * sqrt 2, height, b * sqrt 2) * Ry(45)
+function diamondBox(area: GlorietaArea, a: number, b: number, height: number): Mat4 {
+    return M4.multiply(
+        M4.translation(V3.create(area.center[0], height / 2, area.center[1])),
+        M4.multiply(M4.scale(V3.create(a * Math.SQRT2, height, b * Math.SQRT2)), M4.rotationY(Math.PI / 4)));
+}
+
+// Dashes along the diamond with corners at (+-a, 0) and (0, +-b)
+function diamondDashes(area: GlorietaArea, a: number, b: number): DrawItem[] {
+    const corners = [[a, 0], [0, b], [-a, 0], [0, -b]];
+    const dashes: DrawItem[] = [];
+    for (let side = 0; side < 4; side++) {
+        const [x0, z0] = corners[side];
+        const [x1, z1] = corners[(side + 1) % 4];
+        const length = Math.hypot(x1 - x0, z1 - z0);
+        // Like streetTile: rotationY(yaw) turns the dash's +z along the side
+        const yaw = Math.atan2(x1 - x0, z1 - z0);
+        for (let i = 0; i < DASHES_PER_SIDE; i++) {
+            const t = (i + 0.5) / DASHES_PER_SIDE;
+            const position = V3.create(area.center[0] + x0 + t * (x1 - x0), 0.01,
+                area.center[1] + z0 + t * (z1 - z0));
+            const world = M4.multiply(M4.translation(position),
+                M4.multiply(M4.rotationY(yaw), M4.scale(V3.create(0.06, 0.01, 0.5 * length / DASHES_PER_SIDE))));
+            dashes.push(drawItem('box', world, COLORS.laneDash, 0.5));
+        }
+    }
+    return dashes;
+}
+
+function glorietaFloor(area: GlorietaArea): DrawItem[] {
+    const [halfX, halfZ] = area.half;
+    const floorX = 2 * (halfX + RING_LANES);
+    const floorZ = 2 * (halfZ + RING_LANES);
+    const slab = M4.multiply(M4.translation(V3.create(area.center[0], -0.5 * ROAD_THICKNESS, area.center[1])),
+        M4.scale(V3.create(floorX, ROAD_THICKNESS, floorZ)));
     return [
-        ...pavement,
-        drawItem('box', diamond(1, 0.05), COLORS.plazaCurb, 0.6),
-        drawItem('box', diamond(0.85, 0.07), COLORS.plaza),
+        { ...drawItem('street', slab, COLORS.ground), band: BAND_PLAIN },
+        // The lane line runs halfway between the island and the outer edge
+        ...diamondDashes(area, halfX + RING_LANES / 2, halfZ + RING_LANES / 2),
+        drawItem('box', diamondBox(area, halfX, halfZ, 0.05), COLORS.plazaCurb, 0.6),
+        drawItem('box', diamondBox(area, 0.85 * halfX, 0.85 * halfZ, 0.07), COLORS.plaza),
     ];
 }
 
@@ -244,15 +298,20 @@ export function buildCity(city: CityData): CityLayout {
     const statics = [drawItem('box', cellBox({ x: center[0], z: center[2] }, -0.08, [3 * size, 0.02, 3 * size]), COLORS.ground)];
     const lamps = new Map<string, DrawItem>();
 
+    // The glorieta draws its own floor, so its cells get no street tiles
+    const plaza = plazaCells(city);
+    const glorieta = glorietaArea(plaza);
+    if (glorieta !== null) {
+        statics.push(...glorietaFloor(glorieta));
+    }
+
     // Streets and traffic lights
     const flow = new Map<string, number[]>();
     for (const road of [...city.roads, ...city.lights]) {
         flow.set(key(road.x, road.z), vectorOf(road.direction));
     }
     for (const road of [...city.roads, ...city.lights]) {
-        // A diagonal corner is plain asphalt, laid square like the cells around it
-        if (road.direction in DIAGONALS) {
-            statics.push(streetTile(road, [0, 1], BAND_PLAIN));
+        if (inGlorieta(glorieta, road)) {
             continue;
         }
         const ahead = DIRECTIONS[road.direction];
@@ -267,8 +326,6 @@ export function buildCity(city: CityData): CityLayout {
     }
 
     // Buildings, with a street lamp on the sidewalk of those that face a road
-    const plaza = plazaCells(city);
-    statics.push(...glorietaIsland(plaza));
     const pads = new Set(city.helipads.map((pad) => key(pad.x, pad.z)));
     for (const cell of city.obstacles) {
         if (plaza.has(key(cell.x, cell.z))) {

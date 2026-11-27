@@ -41,6 +41,7 @@ export const COLORS = {
     lampCyan: hex('#3ff0ff'),
     plaza: hex('#cfc6ee'),
     plazaCurb: hex('#ff3fb4'),
+    laneDash: hex('#e8e4f0'),
     monumentStone: hex('#cfc6ee'),
     monumentGold: hex('#ffc23d'),
     cars: [hex('#00f0ff'), hex('#ff7ad9'), hex('#ffd21f'), hex('#3d8bff'), hex('#9dff4d'), hex('#ff8a3d')],

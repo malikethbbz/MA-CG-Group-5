@@ -150,11 +150,11 @@ describe('the glorieta plaza', () => {
         expect(plazaCells(city([], { obstacles: block, landmarks: [{ x: 2, z: 2 }] })).size).toBe(0);
     });
 
-    it('draws street, a diamond plaza and the monument instead of towers on the island', () => {
+    it('draws one floor, a diamond plaza and the monument instead of towers on the island', () => {
         const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
         const statics = buildCity(island).statics;
-        // One asphalt tile per island cell: the building cell and the monument's cell
-        expect(statics.filter((item) => item.shape === 'street')).toHaveLength(2);
+        // The glorieta floor is a single slab, not one tile per cell
+        expect(statics.filter((item) => item.shape === 'street')).toHaveLength(1);
         expect(statics.filter((item) => item.color === COLORS.plaza)).toHaveLength(1);
         expect(statics.some((item) => item.color === COLORS.monumentGold)).toBe(true);
         expect(statics.some((item) => COLORS.buildings.includes(item.color))).toBe(false);
@@ -169,5 +169,28 @@ describe('the glorieta plaza', () => {
             .map(([x, , z]) => `${x.toFixed(3)},${z.toFixed(3)}`)
             .sort();
         expect(corners).toEqual(['0.500,0.500', '1.000,-0.500', '1.000,1.500', '1.500,0.500']);
+    });
+
+    it('lays the lane line as dashes along a diamond halfway round the ring', () => {
+        // Island half extents (0.5, 1), so the line's diamond has corners at (+-1.5, 0) and (0, +-2)
+        const island = city([], { obstacles: [{ x: 1, z: 0 }], landmarks: [{ x: 1, z: 1 }] });
+        const dashes = buildCity(island).statics.filter((item) => item.color === COLORS.laneDash);
+        expect(dashes).toHaveLength(24);
+        for (const dash of dashes) {
+            // Both ends of every dash lie on the diamond, so it points along its side
+            for (const end of [-0.5, 0.5]) {
+                const [x, , z] = point(dash.world, 0, 0, end);
+                expect(Math.abs(x - 1) / 1.5 + Math.abs(z - 0.5) / 2).toBeCloseTo(1, 5);
+            }
+        }
+    });
+
+    it('draws no street tiles on the glorieta, only around it', () => {
+        const roads = [{ x: 3, z: 4, direction: 'Up' as const }, { x: 0, z: 0, direction: 'Up' as const }];
+        const island = city(roads, { obstacles: [{ x: 5, z: 4 }], landmarks: [{ x: 5, z: 5 }] });
+        const tiles = buildCity(island).statics.filter((item) => item.shape === 'street');
+        const at = (x: number, z: number) => tiles.some((t) => t.world[12] === x && t.world[14] === z);
+        expect(at(3, 4)).toBe(false);
+        expect(at(0, 0)).toBe(true);
     });
 });
