@@ -1,18 +1,15 @@
-# MA-CG Group 5
+# MA-CG Group 5 - Urban Mobility
 
-## Project Description
+Traffic simulation for the course **TC2008B Multi-Agents and Computer Graphics**
+(Modelación de sistemas multiagentes con gráficas computacionales).
 
-This repository contains Group 5's work for **Multi-Agent Systems and Computer Graphics** (Modelación de sistemas multiagentes con gráficas computacionales). The project models a multi-agent system, in which autonomous agents perceive their environment, make decisions and interact with each other, and presents the simulation through 3D computer graphics.
+Every car is an individual agent that crosses the city alongside other autonomous
+agents: it follows the street directions, respects the traffic lights and avoids
+other cars. The simulation runs in Mesa and is drawn in 3D with WebGL.
 
-### Challenge: Urban mobility
+![Simulation](Images/simulation.jpg)
 
-A multi-agent traffic simulation of a city, built with Mesa and rendered in WebGL with a
-cyberpunk look. Cars spawn at the map corners, drive to a destination following the street
-directions, respect traffic lights and avoid collisions. On top of the required behavior we
-are adding two flying ambulances, ground police units and a flying SWAT unit that responds
-to rogue cars.
-
-## Team Members
+Made by
 
 | Name | Student ID |
 |------|------------|
@@ -20,54 +17,172 @@ to rogue cars.
 | Isabela Valls Chavez | A01173825 |
 | Francisco Javier Becerra Gómez | A01027383 |
 
+---
+
+## 📋 Table of Contents
+
+1. [About the Project](#about-the-project)
+2. [Repository Structure](#repository-structure)
+3. [Prerequisites](#prerequisites)
+4. [Installation & Setup](#installation--setup)
+5. [Running the Simulation](#running-the-simulation)
+6. [Map Legend](#map-legend)
+7. [Server API](#server-api)
+8. [Agent Design](#agent-design)
+9. [References](#references)
+
+---
+
+## About the Project
+
+The challenge is to model urban mobility as a multi-agent system. The project
+starts from the course base project
+([gilecheverria/TC2008B](https://github.com/gilecheverria/TC2008B), `BaseProject`)
+and extends it:
+
+- Cars spawn at the corners of the map and drive to a destination with an A* route.
+- Traffic lights in two groups, so crossing streets are never green at the same time.
+- Flying ambulances that answer emergencies and land on reserved pads.
+- A roundabout (glorieta) around a monument on the `2025_reforma.txt` map.
+- A 3D city with buildings, textured streets and street lamps.
+
 ## Repository Structure
 
-```
-Backend/              Mesa model and Flask server (port 8585)
-  city_server.py      HTTP endpoints consumed by the frontend
-  traffic_base/       Agents and city model
-  city_files/         City maps and mapDictionary.json
-Frontend/             WebGL client (TypeScript + Vite)
-  libs/               3D math, camera, lights, shapes, API client
-  src/                Scene entry point
-  assets/shaders/     GLSL shaders
-```
+The repository contains the following material:
 
-Both folders start from the course base project
-([TC2008B/BaseProject](https://github.com/gilecheverria/TC2008B)).
+- 📂 **Backend** Mesa model and Flask server (port 8585).
+    - `city_server.py` the `/init`, `/city` and `/step` endpoints.
+    - `traffic_base/agent.py` cars, motorcycles, traffic lights, roads, destinations and obstacles.
+    - `traffic_base/ambulance.py` ambulances and emergencies.
+    - `traffic_base/model.py` the city model: reads the map, spawns cars, steps the agents.
+    - `traffic_base/city_graph.py` the street graph used for A* routes.
+    - `city_files/` city maps and `mapDictionary.json`.
+    - `tests/` tests for the model and the server.
+- 📂 **Frontend** WebGL client using TypeScript and Vite (port 5173).
+    - `libs/` 3D math, camera, lights, shapes and the OBJ loader from the course.
+    - `src/main.ts` the scene, the drawing loop and the GUI.
+    - `src/api_connection.ts` the requests to the server.
+    - `src/city.ts` builds the streets, buildings, traffic lights and the hospital.
+    - `src/vehicles.ts` places the cars and ambulances between steps.
+    - `src/camera.ts` camera controls; `src/hud.ts` the statistics panel; `src/config.ts` settings.
+    - `assets/shaders/` Phong shaders; `assets/models/street/` the street model and texture.
+- 📂 **docs** description of the data the server sends to the frontend.
+- 📄 `docker-compose.yml` starts both servers with Docker.
 
-## Running Locally
+## Prerequisites
 
-Run the backend and the frontend in two terminals.
+Before setting up the environment, ensure you have the following installed:
 
-### Backend
+- **Python 3.12+**: [Download Python](https://www.python.org/downloads/)
+- **Git**: [Download Git](https://git-scm.com/downloads)
+- **Node.js 20.19+ or 22.12+**: [Download Node](https://nodejs.org/)
 
-Requires Python 3.12+ (Mesa 3).
+Optional requirements:
+
+- **Docker**: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+## Installation & Setup
+
+We recommend using a Python virtual environment to manage dependencies.
+
+### 1. Clone the Repository
 
 ```bash
-cd Backend
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-python city_server.py            # http://localhost:8585
+git clone https://github.com/malikethbbz/MA-CG-Group-5.git
+cd MA-CG-Group-5
 ```
 
-Tests:
+### 2. Create the Virtual Environment
+
+Create a virtual environment named `.agents`:
+
+**Windows / macOS / Linux:**
 
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest
-ruff check . && ruff format --check .
+python -m venv .agents
 ```
 
-### Frontend
+### 3. Activate the Environment
 
-Requires Node 20.19+ or 22.12+ (Vite 8).
+**Windows (PowerShell):**
+
+```bash
+.\.agents\Scripts\Activate
+```
+
+**Windows (Command Prompt):**
+
+```bash
+.\.agents\Scripts\activate.bat
+```
+
+**macOS / Linux:**
+
+```bash
+source .agents/bin/activate
+```
+
+*You will know the environment is active when you see `(.agents)` at the start of your command line.*
+
+### 4. Install Dependencies
+
+Backend:
+
+```bash
+pip install -r Backend/requirements.txt
+```
+
+Frontend:
 
 ```bash
 cd Frontend
 npm install
-npx vite                         # http://localhost:5173
+```
+
+## Running the Simulation
+
+Run the backend and the frontend in two terminals.
+
+### Step 1: Start the Python Backend
+
+```bash
+cd Backend
+python city_server.py
+```
+
+The server listens on port 8585 (http://localhost:8585).
+
+### Step 2: Run the WebGL application
+
+```bash
+cd Frontend
+npx vite
+```
+
+Open http://localhost:5173/. To open another map, pick it in the **Map** menu
+or add it to the URL, for example http://localhost:5173/?map=2025_reforma.txt.
+
+Controls: arrows rotate the camera, `W` `A` `S` `D` pan, `+` / `-` zoom.
+
+### Docker compose
+
+From the root of the repository:
+
+```bash
+docker compose up --build
+```
+
+### Tests
+
+```bash
+cd Backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+```bash
+cd Frontend
+npm test
 ```
 
 ## Map Legend
@@ -80,54 +195,64 @@ From `Backend/city_files/mapDictionary.json`:
 | `S` `s` | Traffic light (green for 15 and 7 steps) |
 | `#` | Obstacle / building |
 | `D` | Destination |
+| `A` | Monument (center of the roundabout) |
 
 The two light groups share a 22-step cycle: `s` lights are green for the first 7 steps,
-then `S` lights for the next 15, so crossing streets are never green at the same time.
+then `S` lights for the next 15.
 
 ## Server API
 
 | Endpoint | Method | Returns |
 |----------|--------|---------|
-| `/init` | GET, POST | Creates the model. POST body, every field optional: `{"map": "2025_base.txt", "seed": 42, "spawnInterval": 10, "spawnPoints": "corners"}`. See [`docs/frame-api.md`](docs/frame-api.md) |
-| `/city` | GET | Static map: size, roads, obstacles, destinations, lights (with `direction`), helipads and landmarks. See [`docs/frame-api.md`](docs/frame-api.md) |
-| `/step` | GET | Advances one step while running and returns the frame: stats, light colors, vehicles and this step's events. See [`docs/frame-api.md`](docs/frame-api.md) |
-| `/update` | GET | Deprecated: use `/step`. Advances one step while the simulation is running |
-| `/getAgents` | GET | Deprecated: use `/step`. Cars: `id`, `x`, `y`, `z`, `heading` |
-| `/getTrafficLights` | GET | Deprecated: use `/city` and `/step`. Lights: position and `state` (`true` = green) |
-| `/getObstacles` | GET | Deprecated: use `/city`. Building positions |
-| `/getRoads` | GET | Deprecated: use `/city`. Road positions and `direction` |
-| `/getDestinations` | GET | Deprecated: use `/city`. Destination positions |
-| `/getStatus` | GET | Deprecated: use `/step`'s `stats`. Step, `running`, `stopReason`, spawned / arrived / active cars, average trip and wait steps (`null` until a car arrives) |
+| `/init` | GET, POST | Creates the model. Optional JSON body, see the options below |
+| `/city` | GET | Static map: size, roads, obstacles, destinations, lights, hospital, helipads and landmarks |
+| `/step` | GET | Advances one step and returns the stats, light colors, vehicles and events |
+
+| `/init` option | Default | Meaning |
+|----------------|---------|---------|
+| `map` | `"2025_base.txt"` | A map file in `Backend/city_files/` |
+| `seed` | `42` | Random seed |
+| `spawnInterval` | `10` | Steps between spawns, 1 to 10 |
+| `carsPerSpawn` | `4` | Most cars a spawn step places on the free corners, 1 to 4 |
+| `ambulances` | `2` | Number of ambulances, 0 to 2 |
+| `emergencyChance` | `1.0` | Chance, 0 to 1, that an emergency opens every 25 steps |
+
+A value that is not a number, out of range, or a map that is not in `city_files`
+returns `400`. The full description of each answer is in
+[`docs/frame-api.md`](docs/frame-api.md).
 
 Grid `(x, y)` maps to world `(x, z)`; `y` is the height in the 3D scene. Calls made
 before `/init` return `409`.
 
 ## Agent Design
 
-Each car runs the first behavior whose condition holds, from highest to lowest priority:
+Every spawn step puts a car (30% of them motorcycles) on each free map corner, up to
+`carsPerSpawn`. Each car then runs the first behavior whose condition holds, from
+highest to lowest priority:
 
 1. No route available: wait
 2. Red light on the next cell: stop
-3. Car on the next cell: wait; every `PATIENCE` blocked steps (3), look for a route around it
+3. Car or ambulance-reserved cell ahead: wait; every 3 blocked steps, look for a route
+   around it
 4. Otherwise: drive one cell along the A* route
 
-Routes come from a directed street graph built from the map (`traffic_base/city_graph.py`).
-A move is legal when it never goes against the direction of the current or the next cell,
-which allows driving forward, changing lanes and crossing intersections.
+Routes come from a directed street graph built from the map. A move is legal when it
+never goes against the direction of the current or the next cell, which allows driving
+forward, changing lanes and crossing intersections. Cars blocked by the car ahead try
+again once it has moved, so a whole queue advances in one step.
 
-## Roadmap
+**Ambulances** park on the roof of the **hospital** (the building nearest the map
+centre) and the building next to it. Every 25 steps an emergency may open at a random
+building with a free road cell beside it (never the hospital). The nearest idle
+ambulance reserves that cell, flies straight to it at cruise height (`cruise`), lands
+once no car is on it (`on_scene`), serves for 10 steps and flies back (`return`) to
+its roof (`idle`). Cars never drive into a reserved cell.
 
-| Phase | Scope |
-|-------|-------|
-| 1 | Cars: A* routing, traffic lights, collision avoidance, spawning and removal |
-| 2 | 3D city: buildings, roads, lights and cars driven by transformation matrices |
-| 3 | Flying ambulances: emergencies, landing spot reservation |
-| 4 | Rogue cars, ground police coordination, flying SWAT unit |
-| 5 | Cyberpunk visuals: models, neon lighting, atmosphere |
-| 6 | Report, video and final cleanup |
+## References
 
-## Deliverables
-
-- PDF report: problem and solution, agent design, subsumption architecture, environment, conclusions
-- WebGL simulation and the server connecting it to Mesa
-- Video of the simulation running
+- **Course repository**: [gilecheverria/TC2008B](https://github.com/gilecheverria/TC2008B)
+- **Mesa**: [Official Documentation](https://mesa.readthedocs.io/)
+- **Flask**: [User Guide](https://flask.palletsprojects.com/)
+- **WebGL**: [API Documentation](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API)
+- **TWGL**: [twgl.js](https://twgljs.org/)
+- **Street model and texture**: "80-street" from [Free3D](https://free3d.com/), in `Frontend/assets/models/street/`
