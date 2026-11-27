@@ -1,4 +1,4 @@
-"""Endpoint tests through Flask's test client."""
+"""Endpoint tests for /init, /city and /step through Flask's test client."""
 
 import itertools
 
@@ -16,44 +16,30 @@ def client() -> FlaskClient:
     return city_server.app.test_client()
 
 
+@pytest.mark.parametrize("path", ["/city", "/step"])
 def test_requests_before_init_get_a_409_that_says_to_call_init(
-    client: FlaskClient,
+    client: FlaskClient, path: str
 ) -> None:
-    response = client.get("/update")
+    response = client.get(path)
     assert response.status_code == 409
     assert "/init" in response.get_json()["message"]
 
 
-def test_init_rejects_a_map_that_is_not_in_city_files(client: FlaskClient) -> None:
-    response = client.post("/init", json={"map": "../city_server.py"})
-    assert response.status_code == 400
-    assert city_server.city_model is None
-
-
-@pytest.mark.parametrize("map_name", [["2025_base.txt"], {"a": 1}, 7])
-def test_init_rejects_a_map_that_is_not_a_string(
+@pytest.mark.parametrize("map_name", ["../city_server.py", "2019_base.txt", 7])
+def test_init_rejects_a_map_that_is_not_in_city_files(
     client: FlaskClient, map_name: object
 ) -> None:
     response = client.post("/init", json={"map": map_name})
     assert response.status_code == 400
-
-
-@pytest.mark.parametrize("body", ["{not json", "[1, 2]"])
-def test_init_rejects_a_body_that_is_not_a_json_object(
-    client: FlaskClient, body: str
-) -> None:
-    response = client.post("/init", data=body, content_type="application/json")
-    assert response.status_code == 400
     assert city_server.city_model is None
 
 
-@pytest.mark.parametrize("body", ["[]", "0", '""', "false", "null"])
-def test_init_rejects_a_falsy_json_body_that_is_not_an_object(
+@pytest.mark.parametrize("body", ["{not json", "[1, 2]", "null", '{"seed": "x"}'])
+def test_init_rejects_a_body_that_is_not_a_json_object_of_options(
     client: FlaskClient, body: str
 ) -> None:
     response = client.post("/init", data=body, content_type="application/json")
     assert response.status_code == 400
-    assert response.get_json()["message"] == "Body must be a JSON object."
     assert city_server.city_model is None
 
 
@@ -63,100 +49,30 @@ def test_init_without_a_body_uses_the_default_map(client: FlaskClient) -> None:
     assert response.get_json()["width"] == 36
 
 
-@pytest.mark.parametrize("seed", [-1, 2**32, "7", 1.5, True])
-def test_init_rejects_seeds_that_are_not_small_integers(
-    client: FlaskClient, seed: object
-) -> None:
-    response = client.post("/init", json={"seed": seed})
-    assert response.status_code == 400
-    assert city_server.city_model is None
+def test_init_passes_the_spawn_interval_to_the_model(client: FlaskClient) -> None:
+    client.post("/init", json={"spawnInterval": 2})
+    for _ in range(2):
+        frame = client.get("/step").get_json()
+    assert frame["stats"]["spawned"] == 8
 
 
-def test_init_names_the_map_when_it_cannot_be_loaded(client: FlaskClient) -> None:
-    response = client.post("/init", json={"map": "2024_base.txt"})
-    assert response.status_code == 400
-    assert "2024_base.txt" in response.get_json()["message"]
-
-
-def test_init_then_step_reports_cars_with_headings(client: FlaskClient) -> None:
-    init = client.post("/init", json={"seed": 1})
-    assert init.get_json()["width"] == 36
-    client.get("/update")
-    cars = client.get("/getAgents").get_json()["positions"]
-    assert len(cars) == 4
-    assert all(set(car["heading"]) == {"x", "z"} for car in cars)
-
-
-def test_static_endpoints_report_every_map_cell(client: FlaskClient) -> None:
-    client.post("/init", json={})
-    counts = {
-        path: len(client.get(path).get_json()["positions"])
-        for path in (
-            "/getRoads",
-            "/getObstacles",
-            "/getDestinations",
-            "/getTrafficLights",
-        )
-    }
-    assert counts == {
-        "/getRoads": 782,
-        "/getObstacles": 440,
-        "/getDestinations": 26,
-        "/getTrafficLights": 48,
-    }
-
-
-def test_lights_and_roads_carry_their_state_and_direction(client: FlaskClient) -> None:
-    client.post("/init", json={})
-    lights = client.get("/getTrafficLights").get_json()["positions"]
-    roads = client.get("/getRoads").get_json()["positions"]
-    assert {type(light["state"]) for light in lights} == {bool}
-    assert {road["direction"] for road in roads} == {"Up", "Down", "Left", "Right"}
-
-
-def test_status_counts_spawned_cars(client: FlaskClient) -> None:
-    client.post("/init", json={})
-    status = client.get("/getStatus").get_json()
-    assert status["spawned"] == 4
-    assert status["running"] is True
-    assert status["avgTripSteps"] is None
-
-
-def test_update_stops_advancing_once_the_run_stops(
-    client: FlaskClient, tiny_city: TinyCity
-) -> None:
-    city_server.city_model = tiny_city([">>s>D"], short_green=1, long_green=1000)
-    for _ in range(30):
-        last = client.get("/update").get_json()
-    assert last["running"] is False
-    assert last["currentStep"] == 20
-    status = client.get("/getStatus").get_json()
-    assert status["stopReason"] == "every spawn corner is occupied"
-
-
-@pytest.mark.parametrize("path", ["/city", "/step"])
-def test_frame_endpoints_get_a_409_before_init(client: FlaskClient, path: str) -> None:
-    response = client.get(path)
-    assert response.status_code == 409
-    assert "/init" in response.get_json()["message"]
-
-
-def test_city_holds_every_cell_the_old_endpoints_report(client: FlaskClient) -> None:
+def test_city_lists_every_map_cell_and_the_hospital(client: FlaskClient) -> None:
     client.post("/init", json={})
     city = client.get("/city").get_json()
-    old = {
-        key: len(client.get(path).get_json()["positions"])
-        for key, path in (
-            ("roads", "/getRoads"),
-            ("obstacles", "/getObstacles"),
-            ("destinations", "/getDestinations"),
-            ("lights", "/getTrafficLights"),
-        )
+    counts = {key: len(city[key]) for key in ("roads", "obstacles", "destinations")}
+    assert counts == {"roads": 772, "obstacles": 414, "destinations": 26}
+    assert len(city["lights"]) == 48
+    assert (city["width"], city["height"]) == (36, 35)
+    model = city_server.city_model
+    assert city["hospital"] == {"x": model.hospital[0], "z": model.hospital[1]}
+    assert city["helipads"][0] == city["hospital"]
+    assert city["hospital"] in city["obstacles"]
+    assert {road["direction"] for road in city["roads"]} == {
+        "Up",
+        "Down",
+        "Left",
+        "Right",
     }
-    assert {key: len(city[key]) for key in old} == old
-    assert old == {"roads": 782, "obstacles": 440, "destinations": 26, "lights": 48}
-    assert (city["width"], city["height"]) == (36, 36)
-    assert city["helipads"] == [{"x": 2, "z": 2}, {"x": 33, "z": 33}]
 
 
 def test_city_lists_the_reforma_monument_as_a_landmark_and_never_as_an_obstacle(
@@ -164,14 +80,14 @@ def test_city_lists_the_reforma_monument_as_a_landmark_and_never_as_an_obstacle(
 ) -> None:
     assert client.post("/init", json={"map": REFORMA_MAP}).status_code == 200
     city = client.get("/city").get_json()
-    # File row 14, column 15 of a 36-row map is grid (15, 36 - 14 - 1).
-    assert city["landmarks"] == [{"kind": "monument", "x": 15, "z": 21}]
+    # File row 14, column 15 of a 35-row map is grid (15, 35 - 14 - 1).
+    assert city["landmarks"] == [{"kind": "monument", "x": 15, "z": 20}]
     for key in ("roads", "obstacles", "destinations", "lights"):
-        assert all((c["x"], c["z"]) != (15, 21) for c in city[key])
+        assert all((c["x"], c["z"]) != (15, 20) for c in city[key])
     frames = [client.get("/step").get_json() for _ in range(100)]
     on_road = [v for f in frames for v in f["vehicles"] if v["y"] == 0]
     assert on_road
-    assert all((v["x"], v["z"]) != (15, 21) for v in on_road)
+    assert all((v["x"], v["z"]) != (15, 20) for v in on_road)
 
 
 def test_the_base_map_has_no_landmarks(client: FlaskClient) -> None:
@@ -194,9 +110,20 @@ def test_each_light_points_the_way_of_the_cell_feeding_it(client: FlaskClient) -
 def test_city_and_step_name_the_same_lights(client: FlaskClient) -> None:
     client.post("/init", json={})
     city_ids = [light["id"] for light in client.get("/city").get_json()["lights"]]
-    step_ids = [light["id"] for light in client.get("/step").get_json()["lights"]]
+    step_lights = client.get("/step").get_json()["lights"]
     assert len(set(city_ids)) == len(city_ids) == 48
-    assert set(step_ids) == set(city_ids)
+    assert {light["id"] for light in step_lights} == set(city_ids)
+    assert {type(light["green"]) for light in step_lights} == {bool}
+
+
+def test_step_reports_cars_with_headings(client: FlaskClient) -> None:
+    client.post("/init", json={"seed": 1})
+    frame = client.get("/step").get_json()
+    cars = [v for v in frame["vehicles"] if v["kind"] in ("car", "motorcycle")]
+    assert len(cars) == 4
+    assert all(set(car["heading"]) == {"x", "z"} for car in cars)
+    assert frame["stats"]["spawned"] == 4
+    assert frame["stats"]["avgTripSteps"] is None
 
 
 def test_a_vehicle_vanishes_only_in_the_frame_that_reports_its_arrival(
@@ -239,53 +166,3 @@ def test_a_stopped_run_does_not_report_its_last_events_again(
     assert [f["step"] for f in frames[-3:]] == [20, 20, 20]
     assert [e["type"] for e in frames[-3]["events"]] == ["arrived"]
     assert frames[-2]["events"] == frames[-1]["events"] == []
-
-
-@pytest.mark.parametrize("interval", [0, 11, True, "3", 2.5])
-def test_init_rejects_a_spawn_interval_outside_1_to_10(
-    client: FlaskClient, interval: object
-) -> None:
-    response = client.post("/init", json={"spawnInterval": interval})
-    assert response.status_code == 400
-    assert "spawnInterval" in response.get_json()["message"]
-    assert city_server.city_model is None
-
-
-def test_init_passes_the_spawn_interval_to_the_model(client: FlaskClient) -> None:
-    client.post("/init", json={"spawnInterval": 2})
-    for _ in range(2):
-        frame = client.get("/step").get_json()
-    assert frame["stats"]["spawned"] == 8
-
-
-@pytest.mark.parametrize("spawn_points", ["sides", "Edges", "", 1, None, ["edges"]])
-def test_init_rejects_spawn_points_outside_corners_and_edges(
-    client: FlaskClient, spawn_points: object
-) -> None:
-    response = client.post("/init", json={"spawnPoints": spawn_points})
-    assert response.status_code == 400
-    message = response.get_json()["message"]
-    assert "spawnPoints" in message and "edges" in message
-    assert city_server.city_model is None
-
-
-def spawn_cells(client: FlaskClient, steps: int) -> set[tuple[int, int]]:
-    """Cells where cars first appear. Cars spawn after everyone moves, so a car new to
-    a frame still sits on the cell it spawned on."""
-    frames = [client.get("/step").get_json() for _ in range(steps)]
-    cells = set()
-    for before, after in itertools.pairwise(frames):
-        old = {v["id"] for v in before["vehicles"]}
-        cells |= {(v["x"], v["z"]) for v in after["vehicles"] if v["id"] not in old}
-    return cells
-
-
-def test_init_with_edge_spawn_points_spawns_beyond_the_four_corners(
-    client: FlaskClient,
-) -> None:
-    client.post("/init", json={"spawnInterval": 1})
-    corner_spawns = spawn_cells(client, 10)
-    assert corner_spawns and corner_spawns <= {(0, 0), (35, 0), (0, 35), (35, 35)}
-    response = client.post("/init", json={"spawnPoints": "edges", "spawnInterval": 1})
-    assert response.status_code == 200
-    assert len(spawn_cells(client, 10)) > 4

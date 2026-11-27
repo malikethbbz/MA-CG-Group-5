@@ -14,9 +14,6 @@ History = list[dict[int, Position]]
 
 REFORMA_MAP = "2025_reforma.txt"
 TRAFFIC_STEPS = 1000
-# Dense edge runs carry ~5x the cars of the default runs, so 1000 steps would add ~25 s
-# to the suite; 300 steps already holds 150+ cars and thousands of moves.
-DENSE_STEPS = 300
 
 
 @pytest.fixture()
@@ -28,7 +25,6 @@ def tiny_city(tmp_path: Path) -> TinyCity:
         rows: list[str],
         short_green: int = 7,
         long_green: int = 15,
-        spawn_points: str = "corners",
     ) -> CityModel:
         symbols = {
             ">": "Right",
@@ -44,9 +40,7 @@ def tiny_city(tmp_path: Path) -> TinyCity:
         }
         (tmp_path / "mapDictionary.json").write_text(json.dumps(symbols))
         (tmp_path / "city.txt").write_text("\n".join(rows))
-        return CityModel(
-            map_name="city.txt", map_dir=tmp_path, spawn_points=spawn_points
-        )
+        return CityModel(map_name="city.txt", map_dir=tmp_path)
 
     return build
 
@@ -71,14 +65,11 @@ class TrafficRun(NamedTuple):
 def traffic_run(
     map_name: str,
     spawn_interval: int,
-    spawn_points: str = "corners",
     steps: int = TRAFFIC_STEPS,
 ) -> TrafficRun:
     """A real map run with seed 42. Cached so every test module reads the same run;
     tests must not step the model."""
-    model = CityModel(
-        map_name=map_name, spawn_interval=spawn_interval, spawn_points=spawn_points
-    )
+    model = CityModel(map_name=map_name, spawn_interval=spawn_interval)
     history = [car_positions(model)]
     for _ in range(steps):
         model.step()

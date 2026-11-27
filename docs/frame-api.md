@@ -1,22 +1,26 @@
 # Frame API
 
-The frontend draws the simulation from two endpoints. `/init` still creates the model.
+The frontend draws the simulation from three endpoints: `/init` creates the model,
+`/city` sends the static map once and `/step` advances the model and sends what moves.
 
-`POST /init` takes an optional JSON object: `map` (a file in `city_files/`), `seed`
-(0 to 2³²−1), `spawnInterval` (1 to 10, default 10, the assignment's rate) and
-`spawnPoints` (`"corners"` or `"edges"`, default `"corners"`). Any other value gets a
-400 with a message naming the field.
+`POST /init` takes an optional JSON object. Every field is optional:
 
-- `"corners"` is the assignment's rule: every spawn step puts a car on each free map
-  corner. Lower intervals spawn denser traffic; 2 still flows (about 130 cars at
-  once), but 1 jams the four corner cells within 70 to 220 steps.
-- `"edges"` spawns on every border road cell that is not a light and can reach a
-  destination (the whole outer ring). Each spawn step fills 3 of the free ones, chosen
-  at random from the seed. Use it with `spawnInterval: 1` for the densest traffic:
-  on `2025_base.txt` about 220 cars at once (peak 257) keep flowing for 1500 steps,
-  about 2.9 arriving a step. `2025_reforma.txt` holds about 300 but its glorieta
-  gridlocks after 800 to 900 steps on some seeds. At higher intervals `"edges"`
-  spawns fewer cars than `"corners"`.
+| field             | default           | meaning                                              |
+|-------------------|-------------------|------------------------------------------------------|
+| `map`             | `"2025_base.txt"` | a map file in `city_files/`                          |
+| `seed`            | `42`              | random seed                                          |
+| `spawnInterval`   | `10`              | steps between spawns, 1 to 10 (the assignment's 10)  |
+| `carsPerSpawn`    | `4`               | most cars a spawn step places, 1 to 4                |
+| `ambulances`      | `2`               | number of ambulances, 0 to 2                         |
+| `emergencyChance` | `1.0`             | chance, 0 to 1, that an emergency opens every 25 steps |
+
+Numbers are read with `int()` / `float()`. A value that can't be converted or is out
+of range, a map that is not in `city_files/`, or a body that is not a JSON object
+returns `400` with a short `message`.
+
+Every spawn step puts a car on each free map corner, up to `carsPerSpawn` of them.
+Lower intervals spawn denser traffic; 1 jams the four corner cells after a few hundred
+steps.
 
 A run stops when a spawn step cannot place any car; `stats.stopReason` says why.
 
@@ -37,19 +41,22 @@ Static map data. Call it once after `/init`.
   "obstacles":    [{"x": 3, "z": 4}],
   "destinations": [{"x": 5, "z": 7}],
   "lights":       [{"id": "12", "x": 6, "z": 2, "direction": "Up"}],
-  "helipads":     [{"x": 2, "z": 2}, {"x": 33, "z": 32}],
+  "hospital":     {"x": 17, "z": 16},
+  "helipads":     [{"x": 17, "z": 16}, {"x": 17, "z": 15}],
   "landmarks":    [{"kind": "monument", "x": 15, "z": 20}]
 }
 ```
 
 Grid `(x, y)` is sent as world `(x, z)`; the frontend picks the cell size and the height
-of each mesh. `helipads` lists the two ambulance pads as `{x, z}`. Each sits on a
-building rooftop (an obstacle cell), and an ambulance rests there at `y = 1`.
+of each mesh. `hospital` is the building nearest the map centre (an obstacle cell); no
+emergency ever opens there. `helipads` lists where each ambulance parks, one per
+ambulance: the hospital roof first, then the building next to it. An ambulance rests
+there at `y = 1`.
 
 `landmarks` lists special cells to draw as `{kind, x, z}`. The only kind is
 `monument` (map symbol `A`): the column with the golden angel on the glorieta island.
 A monument cell is in no other list; cars never enter it and it is not a building, so
-no emergency or helipad is ever there. The list is empty on maps without one, such as
+no emergency, hospital or helipad is ever there. The list is empty on maps without one, such as
 `2025_base.txt`.
 
 ## `GET /step`
@@ -82,10 +89,10 @@ Advances the model one step (if it is still running) and returns everything that
 - `heading` is the last one-cell move, so a diagonal is `{"x": 1, "z": 1}`. An
   ambulance sends the nearest of the eight directions it is flying in.
 - `state` is kind-specific: a car is `driving` or `waiting`. An ambulance is `idle`
-  (on its pad), `takeoff`, `cruise` (flying to the emergency), `landing` (descending;
-  it hovers while a car is still on its landing cell), `on_scene` (on the road, `y = 0`),
-  then `takeoff`, `return` and `landing` back onto its pad. Ambulance `x` and `z` are
-  floats because it flies in straight lines over the grid.
+  (parked on its roof, `y = 1`), `cruise` (flying to the emergency at `y = 3`; it
+  hovers over its landing cell while a car is still on it), `on_scene` (on the road,
+  `y = 0`, for 10 steps) and `return` (flying back at `y = 3`). Ambulance `x` and `z`
+  are floats because it flies in straight lines over the grid.
 - `events` only lists what happened during this step. Types:
 
   | type         | `id`         | `x`, `z`                          |

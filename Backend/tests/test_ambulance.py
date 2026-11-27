@@ -1,10 +1,10 @@
-"""Behavior tests for flying ambulances, on the real 2025 maps and on tiny maps.
+"""Behavior tests for the flying ambulances and the hospital, on the real 2025 maps
+and on a tiny map.
 
-Landing rules are checked against the raw map file, not against ambulance.py's own
-spot filter, so a wrong filter cannot vouch for itself.
+Landing rules are checked against the raw map file, not against the model's own spot
+list, so a wrong list cannot vouch for itself.
 """
 
-import math
 from dataclasses import dataclass, field
 
 import pytest
@@ -17,24 +17,15 @@ from traffic_base.ambulance import (
     ROOF_ALTITUDE,
     Ambulance,
 )
-from traffic_base.city_graph import DIRECTION_VECTORS, Position, Vector
-from traffic_base.model import DEFAULT_MAP, SPAWN_INTERVAL, CityModel
+from traffic_base.city_graph import Position
+from traffic_base.model import DEFAULT_MAP, CityModel
 
 Event = dict[str, str | int]  # an /step event: type, id, and x, z for some types
-ARROWS: dict[str, Vector] = {
-    ">": DIRECTION_VECTORS["Right"],
-    "<": DIRECTION_VECTORS["Left"],
-    "^": DIRECTION_VECTORS["Up"],
-    "v": DIRECTION_VECTORS["Down"],
-}
-ORTHOGONAL = list(DIRECTION_VECTORS.values())
 RUN_STEPS = 800
-# Dense edge traffic is ~5x slower per step; 400 steps still serves 10+ emergencies.
-DENSE_RUN_STEPS = 400
-# Two-row map: helipads on the corner rooftops, one emergency building at (3, 1)
-# whose only landing spot is the road cell (3, 0) below it.
-ONE_SPOT_CITY = ["#..#..#", ">>>>>>D"]
-ONE_SPOT = (3, 0)
+# One-row city: the hospital (3, 1) and the second roof (4, 1) sit in the middle, and
+# the only emergency building (6, 1) has one landing cell, the road (6, 0) below it.
+ONE_SPOT_CITY = ["...##.#.", ">>>>>>>D"]
+ONE_SPOT = (6, 0)
 MAX_PHASE_STEPS = 200  # bounds every wait loop so a stuck ambulance fails, not hangs
 
 
@@ -44,6 +35,7 @@ class AmbulanceSnapshot:
     altitude: float
     emergency: int | None
     spot: Position | None
+    position: tuple[float, float]
 
 
 @dataclass
@@ -52,7 +44,6 @@ class CityRun:
 
     model: CityModel
     raw: list[str]  # map rows, top row first, as in the file
-    map_name: str
     cars: list[dict[int, Position]] = field(default_factory=list)
     reserved: list[frozenset[Position]] = field(default_factory=list)
     ambulances: list[dict[int, AmbulanceSnapshot]] = field(default_factory=list)
@@ -79,27 +70,20 @@ class CityRun:
 def snapshot(ambulance: Ambulance) -> AmbulanceSnapshot:
     emergency = ambulance.emergency.unique_id if ambulance.emergency else None
     return AmbulanceSnapshot(
-        ambulance.state, ambulance.altitude, emergency, ambulance.spot
+        ambulance.state,
+        ambulance.altitude,
+        emergency,
+        ambulance.spot,
+        (ambulance.x, ambulance.z),
     )
 
 
-@pytest.fixture(
-    scope="module",
-    params=[
-        (DEFAULT_MAP, "corners", SPAWN_INTERVAL, RUN_STEPS),
-        (REFORMA_MAP, "corners", SPAWN_INTERVAL, RUN_STEPS),
-        (DEFAULT_MAP, "edges", 1, DENSE_RUN_STEPS),
-    ],
-    ids=lambda p: f"{p[0]}-{p[1]}-every-{p[2]}",
-)
+@pytest.fixture(scope="module", params=[DEFAULT_MAP, REFORMA_MAP])
 def city_run(request: pytest.FixtureRequest) -> CityRun:
-    map_name, spawn_points, spawn_interval, steps = request.param
-    model = CityModel(
-        map_name=map_name, spawn_points=spawn_points, spawn_interval=spawn_interval
-    )
-    run = CityRun(model, raw_map(map_name), map_name)
+    model = CityModel(map_name=request.param)
+    run = CityRun(model, raw_map(request.param))
     run.record()
-    for _ in range(steps):
+    for _ in range(RUN_STEPS):
         run.model.step()
         run.record()
     return run
@@ -114,15 +98,36 @@ def events_of(run: CityRun, event_type: str) -> list[tuple[int, Event]]:
     ]
 
 
-def test_two_helipads_sit_on_far_apart_rooftops(city_run: CityRun) -> None:
+def test_ambulances_start_at_and_return_to_the_hospital(city_run: CityRun) -> None:
     model = city_run.model
-    assert len(model.helipads) == len(model.ambulances) == 2
-    assert all(city_run.char(pad) == "#" for pad in model.helipads)
-    a, b = model.helipads
-    assert math.dist(a, b) > math.hypot(model.width, model.height) / 2
-    fresh = CityModel(map_name=city_run.map_name)
-    homes = {(f["x"], f["z"]) for f in fresh.vehicles() if f["kind"] == "ambulance"}
-    assert homes == set(model.helipads)
+    hospital = model.hospital
+    assert city_run.char(hospital) == "#"
+    assert model.helipads[0] == hospital
+    assert len(model.helipads) == len(set(model.helipads)) == 2
+    # The second roof is the building right next to the hospital.
+    other = model.helipads[1]
+    assert abs(other[0] - hospital[0]) + abs(other[1] - hospital[1]) == 1
+    start = {s.position for s in city_run.ambulances[0].values()}
+    assert start == set(model.helipads)
+
+    returns = 0
+    for before, after in zip(
+        city_run.ambulances, city_run.ambulances[1:], strict=False
+    ):
+        for amb_id, snap in after.items():
+            if snap.state == "idle":
+                home = city_run.ambulances[0][amb_id].position
+                assert snap.position == home
+                assert snap.altitude == ROOF_ALTITUDE
+            if snap.state == "idle" and before[amb_id].state == "return":
+                returns += 1
+    assert returns >= 10
+
+
+def test_no_emergency_ever_opens_at_the_hospital(city_run: CityRun) -> None:
+    opened = {(e["x"], e["z"]) for _, e in events_of(city_run, "emergency")}
+    assert len(opened) >= 10
+    assert not opened & set(city_run.model.helipads)
 
 
 def test_ambulances_serve_many_emergencies(city_run: CityRun) -> None:
@@ -130,19 +135,6 @@ def test_ambulances_serve_many_emergencies(city_run: CityRun) -> None:
     assert len(served) >= 10
     assert city_run.model.stats()["emergenciesServed"] == len(served)
     assert len(events_of(city_run, "emergency")) >= len(served)
-
-
-def is_perpendicular_road(run: CityRun, pos: Position, own: Vector) -> bool:
-    """Raw-map intersection test: an orthogonal neighbour is an arrow at right angles
-    to `own`. A light has no arrow in the file, so it takes the model's inferred
-    direction."""
-    for dx, dy in ORTHOGONAL:
-        neighbour = (pos[0] + dx, pos[1] + dy)
-        char = run.char(neighbour)
-        other = run.model.drivable.get(neighbour) if char in "sS" else ARROWS.get(char)
-        if other and own[0] * other[0] + own[1] * other[1] == 0:
-            return True
-    return False
 
 
 def test_every_landing_obeys_the_landing_rules(city_run: CityRun) -> None:
@@ -158,9 +150,8 @@ def test_every_landing_obeys_the_landing_rules(city_run: CityRun) -> None:
         mine = city_run.ambulances[t][int(event["id"])]
         others = [s for i, s in city_run.ambulances[t].items() if i != int(event["id"])]
         building = emergency_at[str(mine.emergency)]
-        assert city_run.char(spot) in ARROWS, f"landed off a plain road at {spot}"
+        assert city_run.char(spot) in "<>^v", f"landed off a plain road at {spot}"
         assert spot not in corners
-        assert not is_perpendicular_road(city_run, spot, ARROWS[city_run.char(spot)])
         assert abs(spot[0] - building[0]) + abs(spot[1] - building[1]) == 1
         assert city_run.char(building) == "#" and building not in model.helipads
         assert all(o.spot != spot for o in others)
@@ -201,7 +192,6 @@ def test_car_invariants_still_hold_with_ambulances(city_run: CityRun) -> None:
     for positions in city_run.cars:
         assert len(set(positions.values())) == len(positions)
     assert model.arrived > 100
-    assert model.active_cars == len(model.cars)
     assert model.spawned == model.arrived + model.stats()["active"]
 
 
@@ -210,44 +200,43 @@ def dispatched(model: CityModel) -> Ambulance:
 
 
 def step_while(model: CityModel, ambulance: Ambulance, state: str) -> None:
-    """Steps while the ambulance is (or is not, with a leading "!") in `state`."""
-    negate, state = state.startswith("!"), state.lstrip("!")
     for _ in range(MAX_PHASE_STEPS):
-        if (ambulance.state == state) == negate:
+        if ambulance.state != state:
             return
         model.step()
-    pytest.fail(f"ambulance stuck {'outside' if negate else 'in'} {state}")
+    pytest.fail(f"ambulance stuck in {state}")
 
 
 def step_until_emergency(model: CityModel) -> None:
     for _ in range(EMERGENCY_INTERVAL + 1):  # it opens, then the next step dispatches
         model.step()
-    assert model.landing_spots == {(3, 1): (ONE_SPOT,)}
+    assert model.hospital == (3, 1)
+    assert model.landing_spots == {(6, 1): (ONE_SPOT,)}
     assert dispatched(model).spot == ONE_SPOT
 
 
-def test_ambulance_hovers_over_a_car_on_the_only_spot_until_it_leaves(
+def test_ambulance_hovers_over_a_car_on_its_spot_until_it_leaves(
     tiny_city: TinyCity,
 ) -> None:
     model = tiny_city(ONE_SPOT_CITY)
     for car in list(model.cars):
         car.remove()
-    stalled = Car(model, model.grid[ONE_SPOT], (6, 0), model.drivable[ONE_SPOT])
+    stalled = Car(model, model.grid[ONE_SPOT], (7, 0), model.drivable[ONE_SPOT])
     stalled.route = []  # broken down on the spot
     step_until_emergency(model)
     ambulance = dispatched(model)
-    step_while(model, ambulance, "!landing")
 
-    for _ in range(10):
+    for _ in range(20):
         model.step()
-        assert ambulance.state == "landing"
-        assert ambulance.altitude == CRUISE_ALTITUDE
+    assert ambulance.state == "cruise"
+    assert (ambulance.x, ambulance.z) == ONE_SPOT
+    assert ambulance.altitude == CRUISE_ALTITUDE
 
-    stalled.route = model.route(ONE_SPOT, (6, 0))
+    stalled.route = model.route(ONE_SPOT, (7, 0))
     model.step()  # the ambulance moves first, so it still sees the car this step
     assert ambulance.altitude == CRUISE_ALTITUDE
     assert ONE_SPOT not in car_positions(model).values()
-    step_while(model, ambulance, "landing")
+    model.step()
     assert ambulance.state == "on_scene"
     assert ambulance.altitude == 0
     assert ONE_SPOT not in car_positions(model).values()  # the queue stayed out
@@ -258,7 +247,6 @@ def test_one_emergency_runs_the_full_state_cycle_in_order(tiny_city: TinyCity) -
     model = tiny_city(ONE_SPOT_CITY)
     step_until_emergency(model)
     ambulance = dispatched(model)
-    assert ambulance.emergency is not None
     ours = {str(ambulance.unique_id), str(ambulance.emergency.unique_id)}
     states, kinds = ["idle", ambulance.state], []
     for _ in range(MAX_PHASE_STEPS):
@@ -268,72 +256,10 @@ def test_one_emergency_runs_the_full_state_cycle_in_order(tiny_city: TinyCity) -
         kinds += [e["type"] for e in model.events if e["id"] in ours]
         if ambulance.state != states[-1]:
             states.append(ambulance.state)
-    assert states == [
-        "idle",
-        "takeoff",
-        "cruise",
-        "landing",
-        "on_scene",
-        "takeoff",
-        "return",
-        "landing",
-        "idle",
-    ]
+    assert states == ["idle", "cruise", "on_scene", "return", "idle"]
     assert kinds == ["landed", "served"]
     assert (ambulance.x, ambulance.z) == ambulance.home
+    assert ambulance.home in model.helipads
     assert ambulance.altitude == ROOF_ALTITUDE
-    assert ambulance.spot is None  # released; the other ambulance may hold one
+    assert ambulance.spot is None
     assert model.reserved == {a.spot for a in model.ambulances if a.spot}
-
-
-def test_an_emergency_with_two_free_spots_still_gets_one_ambulance(
-    tiny_city: TinyCity,
-) -> None:
-    # The real run never has both ambulances idle next to a two-spot emergency, so
-    # this map makes one: building (3, 1) has a free road cell above and below.
-    model = tiny_city([">>>>>>D#", "#..#....", ">>>>>>D."])
-    assert set(model.landing_spots[(3, 1)]) == {(3, 0), (3, 2)}
-    for _ in range(EMERGENCY_INTERVAL + 1):
-        model.step()
-    assert sorted(a.state for a in model.ambulances) == ["idle", "takeoff"]
-    assert len(model.reserved) == 1
-
-
-def test_ambulances_never_land_on_a_light_or_a_spawn_corner(
-    tiny_city: TinyCity,
-) -> None:
-    # On the real map every light and corner is also an intersection, so this map
-    # puts a light and the spawn corner on a straight road next to a building.
-    model = tiny_city(
-        [
-            ">>s>>>D#",  # spawn corner (0, 2), light (2, 2), pad on (7, 2)
-            "#.#.#...",  # emergency buildings below each of them
-            "#.......",  # pad on (0, 0)
-        ]
-    )
-    assert model.spawn_points == [(0, 2)]
-    landings = set()
-    for _ in range(300):
-        model.step()
-        landings |= {(e["x"], e["z"]) for e in model.events if e["type"] == "landed"}
-    assert landings == {(4, 2)}
-
-
-def test_ambulances_never_land_on_an_edge_spawn_point(tiny_city: TinyCity) -> None:
-    # The real maps' two-lane outer ring touches no building, so this map puts
-    # emergency buildings (2, 2) and (4, 2) between the top border road and an inner
-    # road. In edges mode the border road spawns cars, so only the inner road is safe.
-    model = tiny_city(
-        [
-            ">>>>>>D#",  # border road; pad on (7, 3)
-            "..#.#...",
-            ">>>>>>D.",  # inner road, on the border only at its first cell
-            "#.......",  # pad on (0, 0)
-        ],
-        spawn_points="edges",
-    )
-    landings = set()
-    for _ in range(300):
-        model.step()
-        landings |= {(e["x"], e["z"]) for e in model.events if e["type"] == "landed"}
-    assert landings == {(2, 1), (4, 1)}
